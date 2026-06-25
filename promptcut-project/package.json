@@ -1,0 +1,14 @@
+{
+  "name": "promptcut-project",
+  "private": true,
+  "version": "0.1.0",
+  "description": "PromptCut (Nano Banana AI Engine) — local-first prompt-based AI video editor.",
+  "workspaces": [
+    "frontend",
+    "backend-agent"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=promptcut-frontend",
+    "build": "npm run build --workspace=promptcut-frontend"
+  }
+}

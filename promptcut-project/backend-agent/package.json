@@ -1,0 +1,17 @@
+{
+  "name": "promptcut-backend-agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "PromptCut AI orchestration + external API service layer. Environment-agnostic (browser or Node).",
+  "main": "orchestrator.js",
+  "exports": {
+    ".": "./orchestrator.js",
+    "./services/*": "./services/*",
+    "./utils/*": "./utils/*"
+  },
+  "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/util": "^0.12.1"
+  }
+}
