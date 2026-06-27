@@ -9,7 +9,7 @@
  *  │         ├──────────────── Timeline ──────────────────────┤
  *  └──────────────────────────────────────────────────────────┘
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { AlertTriangle, KeyRound } from 'lucide-react';
 import { useOrchestrator } from './hooks/useOrchestrator.js';
 import TopBar from './components/TopBar.jsx';
@@ -21,21 +21,27 @@ import Timeline from './components/Timeline.jsx';
 export default function App() {
   const {
     clips, result, transcript, busy, stage, error, keysReady,
-    ingest, transcribe, render,
+    activeClip, ingest, selectClip, transcribe, render,
   } = useOrchestrator();
   const [tab, setTab] = useState('MY ASSETS');
 
+  // Shared video ref so Timeline can control playback
+  const videoRef = useRef(null);
+
   const needTranscript = useCallback(() => { transcribe(); }, [transcribe]);
+
+  // Viewer source: rendered result takes priority, else show active uploaded clip
+  const viewerSrc = result?.previewUrl || activeClip?.objectUrl || null;
 
   return (
     <div className="flex h-full w-full flex-col bg-panel-900 text-slate-100">
       <TopBar result={result} />
 
       {(!keysReady || error) && (
-        <div className="space-y-1 px-3 pt-2">
+        <div className="space-y-1.5 px-3 pt-2 animate-slide-up">
           {!keysReady && (
             <Banner icon={<KeyRound className="h-4 w-4" />}>
-              Missing API keys. Add your Groq, Gemini &amp; ElevenLabs keys to <code className="text-banana-400">frontend/.env</code>.
+              Missing API keys. Add your Groq, Gemini &amp; ElevenLabs keys to <code className="rounded bg-banana-500/10 px-1.5 py-0.5 text-banana-400">frontend/.env</code>.
             </Banner>
           )}
           {error && (
@@ -57,16 +63,19 @@ export default function App() {
               onUpload={ingest}
               onNeedTranscript={needTranscript}
               keysReady={keysReady}
+              activeClip={activeClip}
+              onSelectClip={selectClip}
             />
             <Viewer
-              src={result?.previewUrl}
+              src={viewerSrc}
               busy={busy}
               stage={stage}
               onUpload={ingest}
               keysReady={keysReady}
+              videoRef={videoRef}
             />
           </div>
-          <Timeline result={result} />
+          <Timeline result={result} clips={clips} activeClip={activeClip} videoRef={videoRef} />
         </div>
       </div>
     </div>
@@ -75,11 +84,11 @@ export default function App() {
 
 function Banner({ icon, tone = 'info', children }) {
   const tones = {
-    info: 'border-banana-500/40 bg-banana-500/10 text-banana-200',
-    error: 'border-red-500/40 bg-red-500/10 text-red-200',
+    info: 'border-banana-500/30 bg-banana-500/5 text-banana-200',
+    error: 'border-red-500/30 bg-red-500/5 text-red-200',
   };
   return (
-    <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${tones[tone]}`}>
+    <div className={`flex items-center gap-2.5 rounded-xl border px-4 py-2.5 text-sm shadow-inner-glow ${tones[tone]}`}>
       {icon}
       <span>{children}</span>
     </div>

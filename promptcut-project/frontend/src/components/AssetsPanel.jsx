@@ -12,7 +12,7 @@ import {
 
 const TABS = ['MY ASSETS', 'LIBRARY', 'TRANSCRIPT'];
 
-export default function AssetsPanel({ tab, setTab, clips, transcript, onUpload, onNeedTranscript, keysReady }) {
+export default function AssetsPanel({ tab, setTab, clips, transcript, onUpload, onNeedTranscript, keysReady, activeClip, onSelectClip }) {
   useEffect(() => {
     if (tab === 'TRANSCRIPT') onNeedTranscript?.();
   }, [tab, onNeedTranscript]);
@@ -59,7 +59,7 @@ export default function AssetsPanel({ tab, setTab, clips, transcript, onUpload, 
 
       {/* Content */}
       <div className="min-h-0 flex-1 overflow-y-auto p-3 animate-fade-in" key={tab}>
-        {tab === 'MY ASSETS' && <MyAssets clips={clips} onUpload={onUpload} keysReady={keysReady} />}
+        {tab === 'MY ASSETS' && <MyAssets clips={clips} onUpload={onUpload} keysReady={keysReady} activeClip={activeClip} onSelectClip={onSelectClip} />}
         {tab === 'LIBRARY' && <Library />}
         {tab === 'TRANSCRIPT' && <Transcript transcript={transcript} hasClips={clips.length > 0} />}
       </div>
@@ -67,21 +67,43 @@ export default function AssetsPanel({ tab, setTab, clips, transcript, onUpload, 
   );
 }
 
-function MyAssets({ clips, onUpload, keysReady }) {
+function MyAssets({ clips, onUpload, keysReady, activeClip, onSelectClip }) {
   if (!clips.length) return <Empty label="This bin is empty" hint="Import media or drag clips here." onUpload={onUpload} keysReady={keysReady} />;
   return (
     <div className="grid grid-cols-2 gap-2">
-      {clips.map((c) => (
-        <div key={c.id} className="overflow-hidden rounded-xl border border-panel-600/60 bg-panel-750 transition-all hover:border-panel-500 hover:shadow-lift-sm">
-          <div className="flex h-20 items-center justify-center bg-panel-900/50 text-banana-400">
-            {c.type === 'audio' ? <FileAudio2 className="h-7 w-7" /> : <Video className="h-7 w-7" />}
-          </div>
-          <div className="flex items-center justify-between gap-1 px-2.5 py-2">
-            <span className="truncate text-[11px] font-medium text-slate-200">{c.name}</span>
-            <span className="shrink-0 text-[10px] text-slate-500">{c.duration ? `${c.duration.toFixed(1)}s` : '—'}</span>
-          </div>
-        </div>
-      ))}
+      {clips.map((c) => {
+        const isActive = activeClip?.id === c.id;
+        return (
+          <button
+            key={c.id}
+            onClick={() => onSelectClip?.(c)}
+            className={`group overflow-hidden rounded-xl border text-left transition-all hover:shadow-lift-sm ${
+              isActive
+                ? 'border-banana-500/60 ring-1 ring-banana-500/30 shadow-glow-banana-sm'
+                : 'border-panel-600/60 bg-panel-750 hover:border-panel-500'
+            }`}
+          >
+            <div className="relative flex h-20 items-center justify-center bg-panel-900/50">
+              {c.thumbnail ? (
+                <img src={c.thumbnail} alt={c.name} className="h-full w-full object-cover" />
+              ) : c.type === 'audio' ? (
+                <FileAudio2 className="h-7 w-7 text-banana-400" />
+              ) : (
+                <Video className="h-7 w-7 text-banana-400" />
+              )}
+              {/* Duration badge */}
+              {c.duration > 0 && (
+                <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white tabular-nums backdrop-blur-sm">
+                  {fmtDuration(c.duration)}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center justify-between gap-1 px-2.5 py-2">
+              <span className="truncate text-[11px] font-medium text-slate-200">{c.name}</span>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -149,3 +171,13 @@ function Empty({ label, hint, onUpload, keysReady }) {
 const ToolIcon = ({ children }) => (
   <button className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-panel-700 hover:text-slate-100">{children}</button>
 );
+
+/** Format seconds to m:ss or h:mm:ss */
+function fmtDuration(sec) {
+  const s = Math.max(0, sec || 0);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = Math.floor(s % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  return `${m}:${String(ss).padStart(2, '0')}`;
+}

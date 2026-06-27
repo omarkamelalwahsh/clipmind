@@ -12,7 +12,9 @@
  * A defensive parser still strips stray fences just in case.
  */
 
-const MODEL = 'gemini-1.5-pro';
+// NOTE: gemini-1.5-pro was retired from the Generative Language API. 2.5-flash is
+// fast, cheap, and supports JSON mode + responseSchema — ideal for the agent.
+const MODEL = 'gemini-2.5-flash';
 const ENDPOINT = (model, key) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
