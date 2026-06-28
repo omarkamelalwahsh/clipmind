@@ -285,6 +285,21 @@ export class PromptCutOrchestrator {
     const intents = plan.intents || [];
     if (intents.length) this._emit('plan', { message: `Detected intents: ${intents.join(', ')}` });
 
+    // 1a) If the agent asked for visual/audio EFFECTS (background, captions,
+    //     audio) but no explicit cuts, treat the WHOLE spine clip as one segment
+    //     so those effects apply to the entire video instead of being dropped.
+    const wantsRender =
+      Boolean(plan.burnCaptions) ||
+      (plan.background && plan.background.action && plan.background.action !== 'none') ||
+      (plan.audioLayers && plan.audioLayers.length > 0) ||
+      Boolean(plan.replaceOriginalAudio);
+    if ((!plan.timeline || plan.timeline.length === 0) && wantsRender) {
+      const fullDuration =
+        this._spine().duration || transcript.duration || beatAnalysis.duration || 1;
+      plan.timeline = [{ id: 'full', sourceId: this.spineId, sourceStart: 0, duration: fullDuration }];
+      this._emit('plan', { message: 'No explicit cuts — applying effects to the full clip.' });
+    }
+
     // 1b) Transcript-only request → stop here. No trimming, no rendering. The
     //     transcript is already computed; surface it for the TRANSCRIPT panel.
     const noEdits =

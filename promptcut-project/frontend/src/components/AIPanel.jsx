@@ -222,15 +222,15 @@ export default function AIPanel({ onSubmit, busy, disabled, log = [], stage, err
       </div>
 
       {/* Seedance-style Command Console */}
-      <div className="mx-3 mb-3 rounded-2xl border border-panel-700 bg-panel-800 p-3.5 shadow-inner-glow flex flex-col gap-3">
+      <div className="mx-3 mb-3 rounded-2xl border border-panel-700 bg-panel-800 p-3 shadow-inner-glow flex flex-col gap-2.5">
         
         {/* Frame boxes row */}
         <div className="flex gap-2">
           {/* First Frame Box */}
-          <label className="relative flex h-14 w-18 shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-panel-600 bg-panel-850 hover:bg-panel-750 transition-colors">
+          <label className="relative flex h-12 w-14 shrink-0 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-panel-600 bg-panel-850 hover:bg-panel-750 hover:border-panel-500 transition-colors">
             {firstFrame ? (
               <div className="relative h-full w-full group">
-                <img src={firstFrame} alt="First Frame" className="h-full w-full object-cover rounded-xl" />
+                <img src={firstFrame} alt="First Frame" className="h-full w-full object-cover rounded-lg" />
                 <button
                   type="button"
                   onClick={(e) => { e.preventDefault(); setFirstFrame(null); }}
@@ -240,9 +240,9 @@ export default function AIPanel({ onSubmit, busy, disabled, log = [], stage, err
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center text-center p-1">
-                <span className="text-xs text-slate-400 font-bold">+</span>
-                <span className="text-[9px] text-slate-500 font-semibold mt-0.5">First Frame</span>
+              <div className="flex flex-col items-center justify-center text-center p-0.5">
+                <span className="text-[10px] text-slate-400 font-bold leading-none">+</span>
+                <span className="text-[8px] text-slate-500 font-semibold mt-0.5 leading-tight">First Frame</span>
               </div>
             )}
             <input
@@ -257,10 +257,10 @@ export default function AIPanel({ onSubmit, busy, disabled, log = [], stage, err
           </label>
 
           {/* Last Frame Box */}
-          <label className="relative flex h-14 w-18 shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-panel-600 bg-panel-850 hover:bg-panel-750 transition-colors">
+          <label className="relative flex h-12 w-14 shrink-0 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-panel-600 bg-panel-850 hover:bg-panel-750 hover:border-panel-500 transition-colors">
             {lastFrame ? (
               <div className="relative h-full w-full group">
-                <img src={lastFrame} alt="Last Frame" className="h-full w-full object-cover rounded-xl" />
+                <img src={lastFrame} alt="Last Frame" className="h-full w-full object-cover rounded-lg" />
                 <button
                   type="button"
                   onClick={(e) => { e.preventDefault(); setLastFrame(null); }}
@@ -270,9 +270,9 @@ export default function AIPanel({ onSubmit, busy, disabled, log = [], stage, err
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center text-center p-1">
-                <span className="text-xs text-slate-400 font-bold">+</span>
-                <span className="text-[9px] text-slate-500 font-semibold mt-0.5">Last Frame</span>
+              <div className="flex flex-col items-center justify-center text-center p-0.5">
+                <span className="text-[10px] text-slate-400 font-bold leading-none">+</span>
+                <span className="text-[8px] text-slate-500 font-semibold mt-0.5 leading-tight">Last Frame</span>
               </div>
             )}
             <input
@@ -295,12 +295,12 @@ export default function AIPanel({ onSubmit, busy, disabled, log = [], stage, err
           rows={2}
           disabled={disabled}
           placeholder="Describe the video you want PromptCut 2.0 to generate..."
-          className="w-full resize-none bg-transparent px-1 text-xs text-slate-100 placeholder-slate-500 outline-none disabled:opacity-50"
+          className="w-full resize-none rounded-lg border border-panel-700/50 bg-panel-850/50 px-2.5 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-panel-600 transition-colors disabled:opacity-50"
         />
 
         {/* Parameter Row */}
-        <div className="flex items-center justify-between mt-1 text-[11px] font-semibold text-slate-400">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
+          <div className="flex flex-1 items-center gap-1 flex-wrap min-w-0">
             {/* Mode selection dropdown */}
             <DropdownSelect
               icon={mode === 'Agent' ? <Bot className="h-3.5 w-3.5 text-banana-400" /> : <Video className="h-3 w-3" />}
@@ -336,7 +336,7 @@ export default function AIPanel({ onSubmit, busy, disabled, log = [], stage, err
           <button
             onClick={submit}
             disabled={busy || disabled || !prompt.trim()}
-            className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-400 text-panel-950 font-bold hover:bg-cyan-300 active:scale-95 disabled:opacity-35 disabled:pointer-events-none transition-all shadow-[0_0_8px_rgba(34,211,238,0.4)]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-cyan-400 text-panel-950 font-bold hover:bg-cyan-300 active:scale-95 disabled:opacity-35 disabled:pointer-events-none transition-all shadow-[0_0_10px_rgba(34,211,238,0.35)]"
           >
             {busy ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

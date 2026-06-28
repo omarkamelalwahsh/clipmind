@@ -120,7 +120,7 @@ export async function extractAudio(source) {
  * @param {{ start: number, duration: number }} range
  * @returns {Promise<Blob>} video/mp4 blob
  */
-export async function trimClip(source, { start, duration, volume = 1.0 }) {
+export async function trimClip(source, { start, duration, volume = 1.0, maxHeight = 720 }) {
   const ffmpeg = await getFFmpeg();
   const inName = 'trim_in.mp4';
   const outName = 'trim_out.mp4';
@@ -130,6 +130,9 @@ export async function trimClip(source, { start, duration, volume = 1.0 }) {
     '-ss', String(start),
     '-i', inName,
     '-t', String(duration),
+    // Cap height (keep aspect, even width) so heavy 1080p/4K clips stay light in
+    // the browser. Smaller sources are left untouched by `min()`.
+    '-vf', `scale=-2:'min(${maxHeight},ih)'`,
     '-c:v', 'libx264',
     '-preset', 'veryfast',
     '-af', `volume=${volume}`,
