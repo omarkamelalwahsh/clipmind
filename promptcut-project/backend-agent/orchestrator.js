@@ -279,7 +279,14 @@ export class PromptCutOrchestrator {
           parameters: { mode, framesType, aspectRatio, duration, firstFrame, lastFrame },
         },
       },
-      { apiKey: this.keys.gemini },
+      {
+        apiKey: this.keys.gemini,
+        onRetry: ({ attempt, maxRetries, waitSec }) => {
+          this._emit('plan', {
+            message: `⏳ Rate limited by Gemini API — retrying in ${waitSec}s (attempt ${attempt}/${maxRetries})…`,
+          });
+        },
+      },
     );
     this._emit('plan', { message: plan.summary || 'Plan ready', data: plan });
     const intents = plan.intents || [];
