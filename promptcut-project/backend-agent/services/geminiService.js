@@ -142,7 +142,7 @@ export const EDIT_PLAN_SCHEMA = {
  * @param {number} [cfg.temperature=0.4]
  * @returns {Promise<object>} Parsed, schema-shaped edit plan.
  */
-export async function generateEditPlan({ userPrompt, mediaContext }, { apiKey, temperature = 0.4 } = {}) {
+export async function generateEditPlan({ userPrompt, mediaContext }, { apiKey, temperature = 0.4, onRetry } = {}) {
   if (!apiKey) throw new Error('geminiService: missing apiKey');
   if (!userPrompt) throw new Error('geminiService: missing userPrompt');
 
@@ -161,25 +161,50 @@ export async function generateEditPlan({ userPrompt, mediaContext }, { apiKey, t
     },
   };
 
-  const res = await fetch(ENDPOINT(MODEL, apiKey), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch(ENDPOINT(MODEL, apiKey), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
-  if (!res.ok) {
-    const detail = await safeText(res);
-    throw new Error(`geminiService: request failed (${res.status}) ${detail}`);
+    if (res.status === 429 || res.status === 503) {
+      if (attempt >= MAX_RETRIES) {
+        const detail = await safeText(res);
+        throw new Error(`geminiService: rate limit exceeded after ${MAX_RETRIES} retries. ${detail}`);
+      }
+      // Parse retry delay from response, default to exponential backoff
+      let waitSec = Math.min(30, 5 * Math.pow(2, attempt));
+      try {
+        const errBody = await res.json();
+        const retryInfo = errBody?.error?.details?.find(d => d['@type']?.includes('RetryInfo'));
+        if (retryInfo?.retryDelay) {
+          const parsed = parseFloat(retryInfo.retryDelay);
+          if (parsed > 0) waitSec = Math.ceil(parsed) + 1;
+        }
+      } catch { /* ignore parse errors, use default backoff */ }
+
+      if (onRetry) onRetry({ attempt: attempt + 1, maxRetries: MAX_RETRIES, waitSec });
+      console.warn(`geminiService: rate limited (${res.status}), retrying in ${waitSec}s (attempt ${attempt + 1}/${MAX_RETRIES})…`);
+      await new Promise(r => setTimeout(r, waitSec * 1000));
+      continue;
+    }
+
+    if (!res.ok) {
+      const detail = await safeText(res);
+      throw new Error(`geminiService: request failed (${res.status}) ${detail}`);
+    }
+
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? '';
+    if (!text) {
+      const reason = data?.candidates?.[0]?.finishReason || 'unknown';
+      throw new Error(`geminiService: empty response (finishReason: ${reason})`);
+    }
+
+    return safeParseJson(text);
   }
-
-  const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? '';
-  if (!text) {
-    const reason = data?.candidates?.[0]?.finishReason || 'unknown';
-    throw new Error(`geminiService: empty response (finishReason: ${reason})`);
-  }
-
-  return safeParseJson(text);
 }
 
 /** Compact, token-efficient context. We trim words to keep the prompt small. */
