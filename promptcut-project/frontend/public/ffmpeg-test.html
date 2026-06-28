@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8" /><title>FFmpeg test</title></head>
+<body style="background:#000;color:#0f0;font:14px/1.7 Consolas,monospace;padding:20px">
+  <div id="log"></div>
+  <script>
+    // Synchronous boot marker — if you can read the next line, the page itself works.
+    var el = document.getElementById('log');
+    function log(m, c) {
+      var d = document.createElement('div');
+      if (c) d.style.color = c;
+      d.textContent = m;
+      el.appendChild(d);
+      try { console.log(m); } catch (e) {}
+    }
+    log('✓ BOOT: page HTML + inline script are running.', '#facc15');
+    window.onerror = function (m, src, l) { log('JS ERROR: ' + m + '  @' + (src||'') + ':' + (l||''), '#f55'); };
+
+    function loadScript(src) {
+      return new Promise(function (res, rej) {
+        var s = document.createElement('script');
+        s.src = src;
+        s.onload = function () { log('  ✓ loaded ' + src, '#888'); res(); };
+        s.onerror = function () { log('  ✗ FAILED to load ' + src, '#f55'); rej(new Error('script load failed')); };
+        document.head.appendChild(s);
+      });
+    }
+    function withTimeout(p, ms, msg) {
+      return Promise.race([p, new Promise(function (_, r) { setTimeout(function () { r(new Error(msg)); }, ms); })]);
+    }
+
+    (async function () {
+      try {
+        log('crossOriginIsolated = ' + window.crossOriginIsolated);
+        log('SharedArrayBuffer    = ' + (typeof SharedArrayBuffer !== 'undefined'));
+        log('');
+        log('STEP 1 — loading FFmpeg UMD libraries from unpkg…');
+        await loadScript('https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js');
+        await loadScript('https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/umd/ffmpeg.js');
+        log('  globals: FFmpegWASM=' + (typeof FFmpegWASM) + '  FFmpegUtil=' + (typeof FFmpegUtil));
+        if (typeof FFmpegWASM === 'undefined' || typeof FFmpegUtil === 'undefined') {
+          throw new Error('UMD globals missing — the library scripts did not expose FFmpegWASM/FFmpegUtil.');
+        }
+
+        var FFmpeg = FFmpegWASM.FFmpeg;
+        var toBlobURL = FFmpegUtil.toBlobURL;
+        var ff = new FFmpeg();
+        ff.on('log', function (e) { log('  core: ' + e.message, '#666'); });
+
+        // Canonical UMD example: UMD core, and NO classWorkerURL — the UMD
+        // ffmpeg.js bundles + locates its own classic worker (importScripts).
+        var CORE = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+
+        log('');
+        log('STEP 2 — downloading core.js + core.wasm…');
+        var urls = await Promise.all([
+          toBlobURL(CORE + '/ffmpeg-core.js', 'text/javascript'),
+          toBlobURL(CORE + '/ffmpeg-core.wasm', 'application/wasm')
+        ]);
+        log('  ✓ downloaded', '#0f0');
+
+        log('');
+        log('STEP 3 — ffmpeg.load() (30s timeout)…');
+        await withTimeout(ff.load({ coreURL: urls[0], wasmURL: urls[1] }), 30000, 'load() TIMED OUT after 30s — the Web Worker never became ready.');
+        log('  ✅✅ ENGINE LOADED — FFmpeg.wasm works in this browser!', '#0f0');
+
+        log('');
+        log('STEP 4 — running ffmpeg -version…');
+        await ff.exec(['-version']);
+        log('  ✅ exec works. Everything is functional. The problem is elsewhere.', '#facc15');
+      } catch (err) {
+        log('');
+        log('❌ FAILED: ' + (err && (err.stack || err.message) || err), '#f55');
+      }
+    })();
+  </script>
+</body>
+</html>

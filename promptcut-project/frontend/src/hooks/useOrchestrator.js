@@ -7,7 +7,7 @@
  * a key.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { createOrchestrator } from 'promptcut-backend-agent';
 
 const apiKeys = {
@@ -23,11 +23,17 @@ export function useOrchestrator() {
   const [transcript, setTranscript] = useState(null);
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState('idle');
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
   const [activeClip, setActiveClip] = useState(null); // the clip currently shown in Viewer + Timeline
+  const [timeline, setTimeline] = useState([]);
+  const [audio, setAudio] = useState([]);
 
   const pushLog = useCallback((evt) => {
     setStage(evt.stage);
+    if (evt.progress !== undefined) {
+      setProgress(evt.progress);
+    }
     if (evt.message) {
       setLog((prev) => [...prev.slice(-49), { stage: evt.stage, message: evt.message, t: Date.now() }]);
     }
@@ -36,6 +42,9 @@ export function useOrchestrator() {
   // One orchestrator per mounted dashboard.
   const orchestratorRef = useRef(null);
   const orchestrator = useMemo(() => {
+    // Create exactly once — survives StrictMode double-invokes and re-renders so
+    // we never spin up two engines / duplicate the FFmpeg load.
+    if (orchestratorRef.current) return orchestratorRef.current;
     const keysOk = apiKeys.groq && apiKeys.gemini && apiKeys.elevenlabs;
     if (!keysOk) return null;
     const o = createOrchestrator({ apiKeys, onEvent: pushLog });
@@ -54,36 +63,54 @@ export function useOrchestrator() {
 
       if (isAudio) {
         const audio = new Audio();
-        audio.preload = 'metadata';
-        audio.onloadedmetadata = () => {
-          resolve({ objectUrl: url, duration: audio.duration, thumbnail: null });
-        };
-        audio.onerror = () => resolve({ objectUrl: url, duration: 0, thumbnail: null });
         audio.src = url;
+        audio.onloadedmetadata = () => {
+          resolve({
+            id: cryptoId(),
+            name: file.name,
+            file,
+            type: 'audio',
+            duration: audio.duration,
+            url,
+          });
+        };
       } else {
         const video = document.createElement('video');
+        video.src = url;
         video.preload = 'metadata';
         video.muted = true;
         video.playsInline = true;
-
-        video.onloadeddata = () => {
-          // Seek to 1s (or 25% if shorter) for a representative thumbnail
-          video.currentTime = Math.min(1, video.duration * 0.25);
+        
+        video.onloadedmetadata = () => {
+          // Generate a rapid thumbnail in browser canvas
+          video.currentTime = Math.min(1.0, video.duration / 2);
         };
-
         video.onseeked = () => {
-          // Grab a thumbnail frame
           const canvas = document.createElement('canvas');
           canvas.width = 160;
           canvas.height = 90;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const thumbnail = canvas.toDataURL('image/jpeg', 0.7);
-          resolve({ objectUrl: url, duration: video.duration, thumbnail });
+          resolve({
+            id: cryptoId(),
+            name: file.name,
+            file,
+            type: 'video',
+            duration: video.duration,
+            thumbnail: canvas.toDataURL('image/jpeg', 0.7),
+            url,
+          });
         };
-
-        video.onerror = () => resolve({ objectUrl: url, duration: 0, thumbnail: null });
-        video.src = url;
+        video.onerror = () => {
+          resolve({
+            id: cryptoId(),
+            name: file.name,
+            file,
+            type: 'video',
+            duration: 10,
+            url,
+          });
+        };
       }
     });
   }, []);
@@ -91,37 +118,95 @@ export function useOrchestrator() {
   const ingest = useCallback(
     async (fileList) => {
       if (!orchestrator) return setError('Missing API keys — check frontend/.env');
+      setBusy(true);
       setError(null);
       try {
-        const files = Array.from(fileList);
+        const list = Array.from(fileList);
+        const enriched = await Promise.all(list.map(enrichClip));
+        
+        // Register in orchestrator
+        for (const item of enriched) {
+          orchestrator.registerClip(item.id, item);
+        }
 
-        // Enrich each file with browser-side metadata (thumbnail, duration, objectUrl)
-        const enrichments = await Promise.all(files.map(enrichClip));
+        setClips((prev) => {
+          const next = [...prev, ...enriched];
+          // Auto-select first clip as active clip if none active yet
+          if (next.length && !activeClip) {
+            setActiveClip(next[0]);
+          }
+          return next;
+        });
 
-        const added = await orchestrator.ingest(files);
-
-        // Merge orchestrator clip data with our browser-side enrichments
-        const enrichedClips = added.map((clip, i) => ({
-          ...clip,
-          objectUrl: enrichments[i].objectUrl,
-          duration: clip.duration || enrichments[i].duration,
-          thumbnail: enrichments[i].thumbnail,
+        // Append to the manual timeline state
+        const newSegments = enriched.filter(c => c.type !== 'audio').map((clip) => ({
+          id: clip.id,
+          sourceId: clip.id,
+          sourceName: clip.name,
+          sourceStart: 0,
+          duration: clip.duration,
+          start: 0,
+          end: clip.duration,
+          thumbnail: clip.thumbnail,
+          type: clip.type,
+          volume: 1.0, // default volume
         }));
+        if (newSegments.length > 0) {
+          setTimeline((prev) => layoutSegments([...prev, ...newSegments]));
+        }
 
-        setClips((prev) => [...prev, ...enrichedClips]);
-
-        // Auto-select the first uploaded clip for preview (like ChatCut)
-        setActiveClip((prev) => prev || enrichedClips[0] || null);
+        // Trigger auto-transcript in background when we have video clips
+        const hasVideo = enriched.some((c) => c.type !== 'audio');
+        if (hasVideo) {
+          orchestrator.transcribe().then((t) => setTranscript(t)).catch(() => {});
+        }
       } catch (err) {
         setError(err.message);
+      } finally {
+        setBusy(false);
       }
     },
-    [orchestrator, enrichClip],
+    [orchestrator, enrichClip, activeClip],
   );
 
   const selectClip = useCallback((clip) => {
     setActiveClip(clip);
-  }, []);
+    if (orchestrator && clip && clip.type !== 'audio') {
+      try {
+        orchestrator.setSpine(clip.id);
+        setTranscript(null);
+        orchestrator.transcribe().then((t) => setTranscript(t)).catch(() => {});
+      } catch (e) {
+        console.error("Failed to set spine:", e);
+      }
+    }
+  }, [orchestrator]);
+
+  const removeClip = useCallback(
+    (id) => {
+      if (orchestrator) orchestrator.unregisterClip(id);
+      setClips((prev) => {
+        const next = prev.filter((c) => c.id !== id);
+        if (activeClip?.id === id) {
+          const nextActive = next.length ? next[0] : null;
+          setActiveClip(nextActive);
+          if (orchestrator && nextActive && nextActive.type !== 'audio') {
+            try {
+              orchestrator.setSpine(nextActive.id);
+              setTranscript(null);
+              orchestrator.transcribe().then((t) => setTranscript(t)).catch(() => {});
+            } catch (e) {
+              console.error(e);
+            }
+          } else {
+            setTranscript(null);
+          }
+        }
+        return next;
+      });
+    },
+    [orchestrator, activeClip],
+  );
 
   const transcribe = useCallback(async () => {
     if (!orchestrator || !clips.length || transcript) return;
@@ -143,7 +228,12 @@ export function useOrchestrator() {
       try {
         const out = await orchestrator.planAndRender(prompt, opts);
         setResult(out);
-        if (orchestratorRef.current?.transcript) setTranscript(orchestratorRef.current.transcript);
+        // Always surface the transcript (esp. for transcript-only requests).
+        if (out.transcript) setTranscript(out.transcript);
+        else if (orchestratorRef.current?.transcript) setTranscript(orchestratorRef.current.transcript);
+        // Don't wipe the manual timeline when a request produced no new segments.
+        if (out.timeline && out.timeline.length) setTimeline(out.timeline);
+        if (out.audio && out.audio.length) setAudio(out.audio);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -154,7 +244,36 @@ export function useOrchestrator() {
     [orchestrator, clips.length],
   );
 
+  const renderCustomTimeline = useCallback(
+    async (customSegments) => {
+      if (!orchestrator) return setError('Missing API keys — check frontend/.env');
+      setBusy(true);
+      setError(null);
+      try {
+        const out = await orchestrator.renderTimeline(customSegments, audio);
+        setResult((prev) => ({
+          ...prev,
+          previewUrl: out.previewUrl,
+          timeline: out.timeline,
+        }));
+        setTimeline(out.timeline);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setBusy(false);
+        setStage('idle');
+      }
+    },
+    [orchestrator, audio],
+  );
+
   const keysReady = Boolean(orchestrator);
+
+  useEffect(() => {
+    if (busy) {
+      setProgress(0);
+    }
+  }, [busy]);
 
   return {
     clips,
@@ -163,12 +282,39 @@ export function useOrchestrator() {
     transcript,
     busy,
     stage,
+    progress,
     error,
     keysReady,
     activeClip,
     ingest,
     selectClip,
+    removeClip,
     transcribe,
     render,
+    timeline,
+    setTimeline,
+    audio,
+    setAudio,
+    renderCustomTimeline,
   };
+}
+
+function layoutSegments(segments) {
+  let currentStart = 0;
+  return segments.map((seg) => {
+    const start = currentStart;
+    const end = start + seg.duration;
+    currentStart = end;
+    return {
+      ...seg,
+      start,
+      end,
+    };
+  });
+}
+
+/** Stable unique id (browser crypto when available, otherwise a random fallback). */
+function cryptoId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'id-' + Math.random().toString(36).slice(2, 10);
 }

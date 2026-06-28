@@ -1,9 +1,4 @@
-/**
- * TopBar — project chrome. Home / undo / redo on the left, project name center,
- * history + layout toggles + Export on the right. Export downloads the rendered
- * Blob URL the orchestrator produced (no server round-trip).
- */
-import { Home, Undo2, Redo2, Users, History, PanelsTopLeft, Download } from 'lucide-react';
+import { Upload, SlidersHorizontal, ChevronDown, Settings } from 'lucide-react';
 
 export default function TopBar({ projectName = 'Causal Plum Viper', result }) {
   const exportVideo = () => {
@@ -15,53 +10,52 @@ export default function TopBar({ projectName = 'Causal Plum Viper', result }) {
   };
 
   return (
-    <header className="flex h-11 shrink-0 items-center justify-between border-b border-panel-600/60 bg-panel-800/80 backdrop-blur-md px-3">
-      {/* Left — nav */}
-      <div className="flex items-center gap-0.5">
-        <IconBtn title="Home"><Home className="h-4 w-4" /></IconBtn>
-        <IconBtn title="Undo"><Undo2 className="h-4 w-4" /></IconBtn>
-        <IconBtn title="Redo"><Redo2 className="h-4 w-4" /></IconBtn>
+    <header className="flex h-14 shrink-0 items-center justify-between border-b border-panel-700 bg-panel-850 px-4">
+      {/* Left — Logo + Badge */}
+      <div className="flex items-center gap-3">
+        {/* Logo Banana SVG */}
+        <div className="flex items-center gap-2">
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none">
+            <defs>
+              <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#facc15" />
+                <stop offset="100%" stopColor="#ca8a04" />
+              </linearGradient>
+            </defs>
+            {/* Banana icon style path */}
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2Zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93Zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 1.84-.63 3.53-1.69 4.89Z" fill="url(#logo-grad)" />
+          </svg>
+          <span className="text-lg font-bold text-slate-100 tracking-tight">PromptCut</span>
+        </div>
+        
+        {/* Badge */}
+        <span className="rounded-full bg-panel-750 px-3 py-0.5 text-[10px] font-semibold text-slate-400 border border-panel-700">
+          Nano Banana AI Engine
+        </span>
       </div>
 
-      {/* Center — project name + collab */}
-      <div className="flex items-center gap-2 text-sm">
-        {/* Logo mark */}
-        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
-          <defs>
-            <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#facc15" />
-              <stop offset="100%" stopColor="#ca8a04" />
-            </linearGradient>
-          </defs>
-          <path d="M4 6a2 2 0 0 1 2-2h5l2 2h5a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z" stroke="url(#logo-grad)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M9 13l2 2 4-5" stroke="url(#logo-grad)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        <span className="font-semibold text-slate-100 tracking-tight">{projectName}</span>
-        <Users className="h-3.5 w-3.5 text-slate-500" />
-      </div>
-
-      {/* Right — actions */}
-      <div className="flex items-center gap-1.5">
-        <IconBtn title="History"><History className="h-4 w-4" /></IconBtn>
-        <IconBtn title="Layout"><PanelsTopLeft className="h-4 w-4" /></IconBtn>
+      {/* Right — Actions */}
+      <div className="flex items-center gap-3">
         <button
           onClick={exportVideo}
           disabled={!result?.previewUrl}
-          className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-banana-500 to-banana-600 px-3.5 py-1.5 text-xs font-semibold text-panel-900 shadow-glow-banana-sm transition-all hover:shadow-glow-banana hover:brightness-110 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+          className="flex items-center gap-1.5 rounded-lg bg-banana-400 hover:bg-banana-300 px-3.5 py-1.5 text-xs font-semibold text-panel-950 shadow-glow-banana-sm transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
         >
+          <Upload className="h-3.5 w-3.5 rotate-180" />
           Export
         </button>
-        {/* Credits badge */}
-        <div className="ml-1 flex items-center gap-1 rounded-full bg-panel-700/80 px-2.5 py-1 text-[11px] font-medium text-slate-300">
-          <span className="text-banana-400">✦</span> 31
-        </div>
-        {/* Avatar */}
-        <div className="relative ml-0.5">
-          <div className="h-7 w-7 rounded-full bg-gradient-to-br from-banana-400 via-banana-500 to-banana-600 p-[2px]">
-            <div className="h-full w-full rounded-full bg-panel-800" />
-          </div>
-          <div className="absolute bottom-0 right-0 h-2 w-2 rounded-full border border-panel-800 bg-emerald-400" />
-        </div>
+
+        {/* Presets dropdown */}
+        <button className="flex items-center gap-1.5 rounded-lg border border-panel-700 bg-panel-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-panel-750 transition-colors">
+          <SlidersHorizontal className="h-3.5 w-3.5 text-slate-400" />
+          Presets
+          <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
+        </button>
+
+        {/* Gear Settings */}
+        <button className="rounded-lg p-1.5 text-slate-400 hover:bg-panel-750 hover:text-slate-100 transition-colors" title="Settings">
+          <Settings className="h-4 w-4" />
+        </button>
       </div>
     </header>
   );

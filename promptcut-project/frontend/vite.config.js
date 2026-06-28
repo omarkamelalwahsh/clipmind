@@ -1,22 +1,14 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// FFmpeg.wasm (multi-threaded build) requires SharedArrayBuffer, which the
-// browser only exposes under "cross-origin isolation". These headers turn it on
-// for the dev server. Configure the same headers on your production host.
-const crossOriginIsolation = {
-  name: 'cross-origin-isolation',
-  configureServer(server) {
-    server.middlewares.use((_req, res, next) => {
-      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-      res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-      next();
-    });
-  },
-};
+// NOTE: We use the SINGLE-THREADED @ffmpeg/core (not core-mt), which does NOT
+// need SharedArrayBuffer / cross-origin isolation. Setting COEP=require-corp is
+// unnecessary here and was preventing the FFmpeg worker from initializing, so we
+// deliberately do NOT set COOP/COEP. (Only add them back if you switch to the
+// multi-threaded core.)
 
 export default defineConfig({
-  plugins: [react(), crossOriginIsolation],
+  plugins: [react()],
   // @ffmpeg/* ship their own workers; don't let Vite try to pre-bundle them.
   optimizeDeps: {
     exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],

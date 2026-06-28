@@ -6,8 +6,7 @@
  */
 import { useEffect } from 'react';
 import {
-  Search, Upload, FolderPlus, List, ArrowUpDown, Filter,
-  Folder, Video, Music, FileAudio2,
+  Upload, List, Folder, Video, Music, FileAudio2, ChevronDown, LayoutGrid
 } from 'lucide-react';
 
 const TABS = ['MY ASSETS', 'LIBRARY', 'TRANSCRIPT'];
@@ -18,9 +17,9 @@ export default function AssetsPanel({ tab, setTab, clips, transcript, onUpload, 
   }, [tab, onNeedTranscript]);
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col border-r border-panel-600/60 bg-panel-800">
+    <section className="flex min-w-0 flex-1 flex-col border-r border-panel-700 bg-panel-850">
       {/* Tab bar */}
-      <div className="flex items-center gap-6 px-4 pt-3 text-[13px]">
+      <div className="flex items-center gap-6 px-4 pt-3 text-[13px] border-b border-panel-700/40">
         {TABS.map((t) => (
           <button
             key={t}
@@ -31,30 +30,31 @@ export default function AssetsPanel({ tab, setTab, clips, transcript, onUpload, 
           >
             {t}
             {tab === t && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full bg-banana-500" />
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full bg-banana-400" />
             )}
           </button>
         ))}
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-panel-600/60 px-3 py-2">
-        <div className="flex flex-1 items-center gap-2 rounded-lg bg-panel-900/70 px-2.5 py-1.5">
-          <Search className="h-3.5 w-3.5 text-slate-500" />
-          <input
-            placeholder="Search"
-            className="w-full bg-transparent text-xs text-slate-200 placeholder-slate-500 outline-none"
-          />
+      <div className="flex items-center justify-between border-b border-panel-700/60 px-4 py-2 text-xs font-semibold text-slate-400">
+        <button className="flex items-center gap-1 hover:text-slate-200 transition-colors">
+          THUMBNAILS
+          <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
+        </button>
+        <div className="flex items-center gap-2">
+          <label title="Import" className="cursor-pointer text-slate-400 hover:text-banana-400 p-1.5 rounded hover:bg-panel-750 transition-colors">
+            <Upload className="h-3.5 w-3.5" />
+            <input type="file" accept="video/*,audio/*" multiple disabled={!keysReady} className="hidden"
+              onChange={(e) => e.target.files?.length && onUpload(e.target.files)} />
+          </label>
+          <button title="Grid View" className="text-banana-400 p-1.5 rounded hover:bg-panel-750 transition-colors">
+            <LayoutGrid className="h-3.5 w-3.5" />
+          </button>
+          <button title="List View" className="text-slate-500 p-1.5 rounded hover:bg-panel-750 transition-colors">
+            <List className="h-3.5 w-3.5" />
+          </button>
         </div>
-        <label title="Import" className={`rounded-lg p-1.5 ${keysReady ? 'cursor-pointer text-slate-400 hover:bg-panel-700 hover:text-banana-400' : 'cursor-not-allowed text-slate-600'}`}>
-          <Upload className="h-4 w-4" />
-          <input type="file" accept="video/*,audio/*" multiple disabled={!keysReady} className="hidden"
-            onChange={(e) => e.target.files?.length && onUpload(e.target.files)} />
-        </label>
-        <ToolIcon><FolderPlus className="h-4 w-4" /></ToolIcon>
-        <ToolIcon><List className="h-4 w-4" /></ToolIcon>
-        <ToolIcon><ArrowUpDown className="h-4 w-4" /></ToolIcon>
-        <ToolIcon><Filter className="h-4 w-4" /></ToolIcon>
       </div>
 
       {/* Content */}
@@ -136,17 +136,35 @@ function Transcript({ transcript, hasClips }) {
       </div>
     </div>
   );
+  const words = transcript.words || [];
+  const text = (transcript.text || '').trim();
+
+  if (!text && words.length === 0) {
+    return (
+      <Empty
+        label="No speech detected"
+        hint="The audio may be music-only/silent, or transcription failed. Check the activity log on the left."
+      />
+    );
+  }
+
   return (
     <div className="space-y-3 text-xs">
-      <p className="leading-relaxed text-slate-300">{transcript.text}</p>
-      <div className="flex flex-wrap gap-1">
-        {transcript.words.slice(0, 400).map((w, i) => (
-          <span key={i} title={`${w.start.toFixed(2)}s – ${w.end.toFixed(2)}s`}
-            className="rounded-md bg-panel-700 px-1.5 py-0.5 text-[11px] text-slate-300 transition-colors hover:bg-banana-500/20 hover:text-banana-200 cursor-default">
-            {w.word.trim()}
-          </span>
-        ))}
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-slate-500">
+        <span>Transcript</span>
+        <span>{words.length} words{transcript.language ? ` · ${transcript.language}` : ''}</span>
       </div>
+      <p className="leading-relaxed text-slate-200">{text}</p>
+      {words.length > 0 && (
+        <div className="flex flex-wrap gap-1 border-t border-panel-700/60 pt-3">
+          {words.slice(0, 600).map((w, i) => (
+            <span key={i} title={`${Number(w.start).toFixed(2)}s – ${Number(w.end).toFixed(2)}s`}
+              className="rounded-md bg-panel-700 px-1.5 py-0.5 text-[11px] text-slate-300 transition-colors hover:bg-banana-500/20 hover:text-banana-200 cursor-default">
+              {(w.word || '').trim()}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

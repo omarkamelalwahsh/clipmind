@@ -137,3 +137,92 @@ export function layoutTimeline(segments) {
 }
 
 const round = (n) => Math.round(n * 1000) / 1000;
+
+/* -------------------------------------------------------------------------- */
+/* Beat / rhythm alignment (millisecond precision)                            */
+/* -------------------------------------------------------------------------- */
+
+/** Round a time to the millisecond — the alignment grid for all sync work. */
+export const msAlign = (t) => Math.round((Number(t) || 0) * 1000) / 1000;
+
+/**
+ * Snap a single timestamp to the nearest detected beat, if one is close enough.
+ * @param {number} time            event time (seconds).
+ * @param {number[]} beats         sorted beat timestamps (seconds).
+ * @param {number} [maxDistance=0.12] only snap if a beat is within this window.
+ * @returns {{ time: number, snapped: boolean, beat: number|null, delta: number }}
+ */
+export function snapToNearestBeat(time, beats, maxDistance = 0.12) {
+  if (!beats || beats.length === 0) return { time: msAlign(time), snapped: false, beat: null, delta: 0 };
+
+  // Binary search for the closest beat (beats are sorted ascending).
+  let lo = 0;
+  let hi = beats.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (beats[mid] < time) lo = mid + 1;
+    else hi = mid;
+  }
+  const candidates = [beats[lo]];
+  if (lo > 0) candidates.push(beats[lo - 1]);
+
+  let best = null;
+  let bestDelta = Infinity;
+  for (const b of candidates) {
+    const d = Math.abs(b - time);
+    if (d < bestDelta) {
+      bestDelta = d;
+      best = b;
+    }
+  }
+
+  if (best != null && bestDelta <= maxDistance) {
+    return { time: msAlign(best), snapped: true, beat: msAlign(best), delta: msAlign(bestDelta) };
+  }
+  return { time: msAlign(time), snapped: false, beat: null, delta: msAlign(bestDelta) };
+}
+
+/**
+ * Align a list of timeline events (SFX/filter triggers) onto the beat grid.
+ * Each event keeps its data but its `start` is snapped to the nearest beat when
+ * one is within tolerance. Events that snap onto the SAME beat are nudged apart
+ * by 1ms so they remain distinguishable on the timeline.
+ *
+ * @param {Array<{ start:number }>} events
+ * @param {number[]} beats
+ * @param {number} [tolerance=0.12]
+ * @returns {Array<object>} events with `start`, `snapped`, `beatDelta` set.
+ */
+export function alignEventsToBeats(events, beats, tolerance = 0.12) {
+  const used = new Set();
+  return (events || [])
+    .map((ev) => {
+      const { time, snapped, beat, delta } = snapToNearestBeat(ev.start || 0, beats, tolerance);
+      let start = time;
+      while (used.has(Math.round(start * 1000))) start = msAlign(start + 0.001);
+      used.add(Math.round(start * 1000));
+      return { ...ev, start, snapped, beatDelta: delta, beat };
+    })
+    .sort((a, b) => a.start - b.start);
+}
+
+/**
+ * Quantize beats to a regular grid implied by the estimated BPM. Useful when the
+ * detector is noisy: snaps each beat to the nearest grid line (bar subdivision).
+ * @param {number[]} beats
+ * @param {number} bpm
+ * @param {number} [subdivision=1] 1 = quarter notes, 2 = eighths, etc.
+ * @returns {number[]}
+ */
+export function quantizeToGrid(beats, bpm, subdivision = 1) {
+  if (!bpm || !beats?.length) return beats || [];
+  const step = 60 / bpm / subdivision;
+  const out = [];
+  let last = -Infinity;
+  for (const b of beats) {
+    const q = msAlign(Math.round(b / step) * step);
+    if (q !== last) out.push(q);
+    last = q;
+  }
+  return out;
+}

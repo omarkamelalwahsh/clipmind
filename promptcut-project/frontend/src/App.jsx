@@ -9,10 +9,11 @@
  *  │         ├──────────────── Timeline ──────────────────────┤
  *  └──────────────────────────────────────────────────────────┘
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { AlertTriangle, KeyRound } from 'lucide-react';
 import { useOrchestrator } from './hooks/useOrchestrator.js';
 import TopBar from './components/TopBar.jsx';
+import Sidebar from './components/Sidebar.jsx';
 import AIPanel from './components/AIPanel.jsx';
 import AssetsPanel from './components/AssetsPanel.jsx';
 import Viewer from './components/Viewer.jsx';
@@ -20,18 +21,57 @@ import Timeline from './components/Timeline.jsx';
 
 export default function App() {
   const {
-    clips, result, transcript, busy, stage, error, keysReady,
-    activeClip, ingest, selectClip, transcribe, render,
+    clips, log, result, transcript, busy, stage, progress, error, keysReady,
+    activeClip, ingest, selectClip, removeClip, transcribe, render,
+    timeline, setTimeline, renderCustomTimeline, audio, setAudio,
   } = useOrchestrator();
   const [tab, setTab] = useState('MY ASSETS');
+  const [aiPanelWidth, setAiPanelWidth] = useState(320);
+  const [isResizing, setIsResizing] = useState(false);
 
   // Shared video ref so Timeline can control playback
   const videoRef = useRef(null);
 
   const needTranscript = useCallback(() => { transcribe(); }, [transcribe]);
 
+  const startResizing = useCallback((mouseDownEvent) => {
+    mouseDownEvent.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  const stopResizing = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  const resize = useCallback(
+    (mouseMoveEvent) => {
+      if (isResizing) {
+        // Offset by 60px due to Sidebar
+        const newWidth = mouseMoveEvent.clientX - 60;
+        if (newWidth >= 260 && newWidth <= 600) {
+          setAiPanelWidth(newWidth);
+        }
+      }
+    },
+    [isResizing],
+  );
+
+  useEffect(() => {
+    window.addEventListener('mousemove', resize);
+    window.addEventListener('mouseup', stopResizing);
+    return () => {
+      window.removeEventListener('mousemove', resize);
+      window.removeEventListener('mouseup', stopResizing);
+    };
+  }, [resize, stopResizing]);
+
+  // A transcript-only request produces no video — jump the user to the result.
+  useEffect(() => {
+    if (result?.transcriptOnly) setTab('TRANSCRIPT');
+  }, [result]);
+
   // Viewer source: rendered result takes priority, else show active uploaded clip
-  const viewerSrc = result?.previewUrl || activeClip?.objectUrl || null;
+  const viewerSrc = result?.previewUrl || activeClip?.url || activeClip?.objectUrl || null;
 
   return (
     <div className="flex h-full w-full flex-col bg-panel-900 text-slate-100">
@@ -51,7 +91,24 @@ export default function App() {
       )}
 
       <div className="flex min-h-0 flex-1">
-        <AIPanel onSubmit={render} busy={busy} disabled={!keysReady} />
+        <Sidebar />
+        <AIPanel
+          onSubmit={render}
+          busy={busy}
+          disabled={!keysReady}
+          log={log}
+          stage={stage}
+          error={error}
+          hasResult={Boolean(result?.previewUrl || result?.transcriptOnly)}
+          transcript={result?.transcriptOnly ? transcript : null}
+          width={aiPanelWidth}
+        />
+
+        {/* Resizable Divider */}
+        <div
+          onMouseDown={startResizing}
+          className={`w-[4px] shrink-0 cursor-col-resize hover:bg-banana-400/80 bg-panel-700/60 transition-colors z-30 ${isResizing ? 'bg-banana-400' : ''}`}
+        />
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1">
@@ -70,12 +127,25 @@ export default function App() {
               src={viewerSrc}
               busy={busy}
               stage={stage}
+              progress={progress}
               onUpload={ingest}
               keysReady={keysReady}
               videoRef={videoRef}
             />
           </div>
-          <Timeline result={result} clips={clips} activeClip={activeClip} videoRef={videoRef} />
+          <Timeline
+            result={result}
+            clips={clips}
+            activeClip={activeClip}
+            videoRef={videoRef}
+            onDeleteClip={removeClip}
+            timeline={timeline}
+            setTimeline={setTimeline}
+            audio={audio}
+            setAudio={setAudio}
+            onRenderCustomTimeline={renderCustomTimeline}
+            src={viewerSrc}
+          />
         </div>
       </div>
     </div>

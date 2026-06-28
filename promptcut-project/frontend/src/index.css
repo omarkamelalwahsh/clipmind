@@ -21,13 +21,18 @@
 html,
 body,
 #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
 body {
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #0b0f14;
 }
 
 /* ─── Selection ─── */
@@ -54,17 +59,22 @@ label {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #1a212b;
+  background: #2a2b2f;
   border-radius: 9999px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #27313d;
+  background: #383a3f;
 }
 
 /* Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #1a212b transparent;
+  scrollbar-color: #2a2b2f transparent;
+}
+
+/* Custom Waveform Gradient */
+.waveform-gradient {
+  background: linear-gradient(to right, #4ade80, #3b82f6, #ef4444);
 }
 
 /* ─── Focus Ring ─── */

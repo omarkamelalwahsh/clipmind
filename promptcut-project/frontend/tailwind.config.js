@@ -18,13 +18,14 @@ export default {
           600: '#ca8a04',
         },
         panel: {
-          900: '#0b0f14',
-          850: '#0e1319',
-          800: '#11161d',
-          750: '#151c25',
-          700: '#1a212b',
-          600: '#27313d',
-          500: '#374151',
+          950: '#101112', // far left sidebar background
+          900: '#131416', // main app background
+          850: '#1b1c1e', // panel background
+          800: '#1c1d20', // panel inner background
+          750: '#222327', // element background
+          700: '#2a2b2f', // border color / dark element
+          600: '#383a3f', // lighter borders
+          500: '#4c4e54',
         },
       },
       fontFamily: {
