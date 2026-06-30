@@ -60,6 +60,7 @@ export function useOrchestrator() {
     return new Promise((resolve) => {
       const url = URL.createObjectURL(file);
       const isAudio = file.type.startsWith('audio/');
+      const isImage = file.type.startsWith('image/');
 
       if (isAudio) {
         const audio = new Audio();
@@ -74,6 +75,16 @@ export function useOrchestrator() {
             url,
           });
         };
+      } else if (isImage) {
+        resolve({
+          id: cryptoId(),
+          name: file.name,
+          file,
+          type: 'image',
+          duration: 5,
+          thumbnail: url,
+          url,
+        });
       } else {
         const video = document.createElement('video');
         video.src = url;
@@ -116,7 +127,8 @@ export function useOrchestrator() {
   }, []);
 
   const ingest = useCallback(
-    async (fileList) => {
+    async (fileList, options = {}) => {
+      const appendToTimeline = options.appendToTimeline !== false;
       if (!orchestrator) return setError('Missing API keys — check frontend/.env');
       setBusy(true);
       setError(null);
@@ -138,21 +150,23 @@ export function useOrchestrator() {
           return next;
         });
 
-        // Append to the manual timeline state
-        const newSegments = enriched.filter(c => c.type !== 'audio').map((clip) => ({
-          id: clip.id,
-          sourceId: clip.id,
-          sourceName: clip.name,
-          sourceStart: 0,
-          duration: clip.duration,
-          start: 0,
-          end: clip.duration,
-          thumbnail: clip.thumbnail,
-          type: clip.type,
-          volume: 1.0, // default volume
-        }));
-        if (newSegments.length > 0) {
-          setTimeline((prev) => layoutSegments([...prev, ...newSegments]));
+        if (appendToTimeline) {
+          // Append to the manual timeline state
+          const newSegments = enriched.filter(c => c.type !== 'audio').map((clip) => ({
+            id: clip.id,
+            sourceId: clip.id,
+            sourceName: clip.name,
+            sourceStart: 0,
+            duration: clip.duration,
+            start: 0,
+            end: clip.duration,
+            thumbnail: clip.thumbnail,
+            type: clip.type,
+            volume: 1.0, // default volume
+          }));
+          if (newSegments.length > 0) {
+            setTimeline((prev) => layoutSegments([...prev, ...newSegments]));
+          }
         }
 
         // Trigger auto-transcript in background when we have video clips
@@ -231,9 +245,23 @@ export function useOrchestrator() {
         // Always surface the transcript (esp. for transcript-only requests).
         if (out.transcript) setTranscript(out.transcript);
         else if (orchestratorRef.current?.transcript) setTranscript(orchestratorRef.current.transcript);
-        // Don't wipe the manual timeline when a request produced no new segments.
-        if (out.timeline && out.timeline.length) setTimeline(out.timeline);
-        if (out.audio && out.audio.length) setAudio(out.audio);
+        
+        if (out.newClip) {
+          const url = URL.createObjectURL(out.newClip.file);
+          const enriched = {
+            ...out.newClip,
+            url,
+            thumbnail: activeClip?.thumbnail || null,
+          };
+          setClips((prev) => [...prev, enriched]);
+          setActiveClip(enriched);
+          if (out.timeline && out.timeline.length) setTimeline(out.timeline);
+          setAudio([]);
+        } else {
+          // Don't wipe the manual timeline when a request produced no new segments.
+          if (out.timeline && out.timeline.length) setTimeline(out.timeline);
+          if (out.audio && out.audio.length) setAudio(out.audio);
+        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -241,7 +269,7 @@ export function useOrchestrator() {
         setStage('idle');
       }
     },
-    [orchestrator, clips.length],
+    [orchestrator, clips.length, activeClip],
   );
 
   const renderCustomTimeline = useCallback(

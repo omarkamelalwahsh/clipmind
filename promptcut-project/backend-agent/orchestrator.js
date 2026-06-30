@@ -55,6 +55,10 @@ export class PromptCutOrchestrator {
     this.transcript = null;
     /** all object URLs we mint, so we can revoke them on dispose */
     this._urls = new Set();
+    /** last generated plan, background, and transcript cache for manual edits */
+    this._lastPlan = null;
+    this._lastBg = null;
+    this._lastTranscript = null;
   }
 
   /* --------------------------- intake --------------------------- */
@@ -69,12 +73,20 @@ export class PromptCutOrchestrator {
     const added = [];
     for (const file of files) {
       const id = cryptoId();
-      const type = file.type.startsWith('audio') ? 'audio' : 'video';
+      const type = file.type.startsWith('audio')
+        ? 'audio'
+        : file.type.startsWith('image')
+        ? 'image'
+        : 'video';
       let duration = 0;
-      try {
-        duration = await ffmpeg.probeDuration(file);
-      } catch {
-        /* leave 0; agent can still place it */
+      if (type === 'image') {
+        duration = 5; // Default image duration
+      } else {
+        try {
+          duration = await ffmpeg.probeDuration(file);
+        } catch {
+          /* leave 0; agent can still place it */
+        }
       }
       const entry = { id, name: file.name, file, type, duration };
       this.clips.set(id, entry);
@@ -289,8 +301,13 @@ export class PromptCutOrchestrator {
       },
     );
     this._emit('plan', { message: plan.summary || 'Plan ready', data: plan });
+    this._lastPlan = plan;
+    this._lastTranscript = transcript;
     const intents = plan.intents || [];
-    if (intents.length) this._emit('plan', { message: `Detected intents: ${intents.join(', ')}` });
+
+    // Narrate the plan in plain language so the user sees WHAT will happen and
+    // WHERE it lands on the timeline (ChatCut-style "here's what I'll do").
+    this._narratePlan(plan, { transcript, beatAnalysis });
 
     // 1a) If the agent asked for visual/audio EFFECTS (background, captions,
     //     audio) but no explicit cuts, treat the WHOLE spine clip as one segment
@@ -367,6 +384,7 @@ export class PromptCutOrchestrator {
 
     // 3) Resolve the BACKGROUND layer up-front (AI image → graceful local fallback).
     const bg = await this._resolveBackground(plan.background);
+    this._lastBg = bg;
 
     // 4) Render each kept segment: trim → (optional) chroma-key composite over bg.
     const renderedClips = [];
@@ -477,16 +495,98 @@ export class PromptCutOrchestrator {
       : null;
     this._emit('done', { message: 'Render complete', progress: 1, data: { previewUrl } });
 
+    // Probe the exact duration of the baked video
+    const durationOfBlob = await ffmpeg.probeDuration(videoBlob).catch(() => spine.duration);
+
+    // Register this baked video blob as a new clip in the orchestrator
+    const renderedId = 'rendered-' + Date.now();
+    const newClipName = `Rendered: ${plan.summary || 'AI Edit'}`;
+    const newClip = {
+      id: renderedId,
+      name: newClipName,
+      file: videoBlob,
+      type: 'video',
+      duration: durationOfBlob,
+    };
+    this.clips.set(renderedId, newClip);
+    this.spineId = renderedId;
+
+    // Reset last resolved states because this is now a baked clip
+    this._lastPlan = null;
+    this._lastBg = null;
+    this._lastTranscript = null;
+
+    // Build a single-segment timeline pointing to the new baked clip
+    const bakedTimelineSegment = {
+      id: cryptoId(),
+      sourceId: renderedId,
+      sourceName: newClipName,
+      sourceStart: 0,
+      start: 0,
+      end: durationOfBlob,
+      duration: durationOfBlob,
+      type: 'video',
+      volume: 1.0,
+    };
+    const bakedTimelineModel = [bakedTimelineSegment];
+
+    const tracks = this._buildTracks({
+      duration: durationOfBlob,
+      backgroundModel: null,
+      timelineModel: bakedTimelineModel,
+      audioModel: [],
+      captioned: false, // Already baked in
+    });
+
     return {
       previewUrl,
-      timeline: timelineModel,
-      audio: audioModel,
-      background: backgroundModel,
+      timeline: bakedTimelineModel,
+      audio: [],
+      background: null,
+      tracks,
       beats: { count: beatAnalysis.count, bpm: beatAnalysis.bpm, timestamps: beatAnalysis.beats },
       plan,
       fit,
       intents,
+      newClip: {
+        id: renderedId,
+        name: newClipName,
+        duration: durationOfBlob,
+        file: videoBlob,
+        type: 'video',
+      }
     };
+  }
+
+  /** Build a ChatCut-style multi-track breakdown of what the render contains. */
+  _buildTracks({ duration, backgroundModel, timelineModel, audioModel, captioned }) {
+    const tracks = [];
+    if (captioned) {
+      tracks.push({ id: 'captions', kind: 'captions', label: 'Captions', start: 0, end: duration });
+    }
+    tracks.push({
+      id: 'v2',
+      kind: 'video',
+      label: backgroundModel ? 'Speaker (Chroma Key)' : 'Video',
+      effects: backgroundModel ? ['chromakey'] : [],
+      segments: timelineModel,
+      start: 0,
+      end: duration,
+    });
+    if (backgroundModel) {
+      tracks.push({
+        id: 'v1',
+        kind: 'background',
+        label: backgroundModel.source === 'ai' ? 'AI Backdrop' : 'Backdrop',
+        url: backgroundModel.url,
+        start: 0,
+        end: duration,
+      });
+    }
+    if (audioModel?.length) {
+      tracks.push({ id: 'a1', kind: 'audio', label: 'Audio', layers: audioModel, start: 0, end: duration });
+    }
+    return tracks;
   }
 
   /**
@@ -505,6 +605,8 @@ export class PromptCutOrchestrator {
     const timelineModel = [];
     let currentStart = 0;
 
+    const bg = this._lastBg;
+
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const source = this.clips.get(seg.sourceId);
@@ -521,11 +623,21 @@ export class PromptCutOrchestrator {
         progress: (i / segments.length) * 0.8,
       });
 
-      const clipBlob = await ffmpeg.trimClip(source.file, {
+      let clipBlob = await ffmpeg.trimClip(source.file, {
         start: seg.sourceStart || 0,
         duration: seg.duration,
         volume: seg.volume !== undefined ? seg.volume : 1.0,
       });
+
+      const composited = Boolean(bg && source.type !== 'audio');
+      if (composited) {
+        this._emit('render', { message: `Chroma-keying "${source.name}" over the ${bg.source} backdrop…` });
+        clipBlob = await ffmpeg.compositeChromaKey(clipBlob, bg.blob, {
+          color: bg.keyColor,
+          similarity: bg.similarity,
+          blend: bg.blend,
+        });
+      }
 
       renderedClips.push(clipBlob);
       timelineModel.push({
@@ -538,6 +650,7 @@ export class PromptCutOrchestrator {
         duration: seg.duration,
         type: source.type,
         volume: seg.volume !== undefined ? seg.volume : 1.0,
+        composited,
       });
       currentStart += seg.duration;
     }
@@ -551,6 +664,11 @@ export class PromptCutOrchestrator {
 
     this._emit('render', { message: 'Stitching timeline…', progress: 0.85 });
     let videoBlob = renderedClips.length === 1 ? renderedClips[0] : await ffmpeg.concatClips(renderedClips);
+
+    if (this._lastPlan?.burnCaptions && this._lastTranscript) {
+      this._emit('render', { message: 'Burning captions into the video (FFmpeg)…', progress: 0.9 });
+      videoBlob = await this._burnCaptionsOnto(videoBlob, this._lastTranscript);
+    }
 
     if (audioLayers && audioLayers.length > 0) {
       this._emit('render', { message: 'Mixing audio layers…', progress: 0.95 });
@@ -566,7 +684,7 @@ export class PromptCutOrchestrator {
       }
       if (layersToMix.length > 0) {
         videoBlob = await ffmpeg.mixAudioLayers(videoBlob, layersToMix, {
-          reencodeVideo: false,
+          reencodeVideo: Boolean(bg),
           keepOriginalAudio: true,
         });
       }
@@ -639,6 +757,52 @@ export class PromptCutOrchestrator {
   }
 
   /**
+   * Emit a human-readable, step-by-step plan narration (ChatCut-style). Tells the
+   * user exactly what will happen and which timeline track each action lands on.
+   */
+  _narratePlan(plan, { transcript, beatAnalysis } = {}) {
+    const steps = [];
+    const intents = plan.intents || [];
+    if (intents.length) steps.push(`🧭 Detected intents: ${intents.join(', ')}`);
+
+    if (transcript?.words?.length) {
+      steps.push(`📝 Transcript: ${transcript.words.length} words extracted (word-level timing).`);
+    }
+    if (beatAnalysis?.count) {
+      steps.push(`🥁 Rhythm: ${beatAnalysis.count} beats detected (~${beatAnalysis.bpm} BPM).`);
+    }
+
+    const bg = plan.background;
+    if (bg && bg.action && bg.action !== 'none') {
+      if (bg.action === 'replace') {
+        steps.push(`🎨 Track "Background" (V1): generate backdrop — "${bg.backdropPrompt || 'AI backdrop'}".`);
+      } else {
+        steps.push('🎨 Track "Background" (V1): synthesize a neutral backdrop.');
+      }
+      steps.push(`🟢 Track "Speaker" (V2): chroma-key out ${bg.keyColor || 'green'} and composite over the backdrop.`);
+    }
+
+    if (plan.burnCaptions) {
+      steps.push('💬 Track "Captions": burn synced word-level subtitles onto the video.');
+    }
+
+    if (plan.replaceOriginalAudio) {
+      steps.push('🔊 Track "Audio" (A1): replace the original audio with the generated track.');
+    }
+    for (const layer of plan.audioLayers || []) {
+      steps.push(`🎵 Track "Audio" (A1): ${layer.kind} @ ${Number(layer.start || 0).toFixed(1)}s — "${layer.prompt}".`);
+    }
+
+    const cuts = (plan.timeline || []).filter((t) => t.id !== 'full');
+    if (cuts.length) steps.push(`✂️ Timeline: ${cuts.length} cut(s) arranged on the video track.`);
+
+    if (!steps.length) steps.push('No actionable edits were detected in this request.');
+
+    this._emit('plan', { message: 'Here’s my plan:' });
+    for (const s of steps) this._emit('plan', { message: s });
+  }
+
+  /**
    * Resolve the background layer for a chroma-key composite.
    * - action "none"      → null (no compositing)
    * - action "remove"    → locally synthesized neutral backdrop
@@ -649,10 +813,52 @@ export class PromptCutOrchestrator {
   async _resolveBackground(background) {
     if (!background || !background.action || background.action === 'none') return null;
 
-    const keyColor = normalizeKeyColor(background.keyColor);
-    const similarity = background.similarity ?? 0.18;
-    const blend = background.blend ?? 0.08;
+    // Auto-detect the ACTUAL key color from the footage. Real green screens are
+    // not pure 0x00FF00 (this clip's is ~0x198D34), so a guessed color won't key.
+    let keyColor = normalizeKeyColor(background.keyColor);
+    let similarity = background.similarity ?? 0.18;
+    let blend = background.blend ?? 0.08;
+    try {
+      await this._ensureEngine();
+      // Find the first non-rendered video clip to detect the original chroma key color
+      let sampleClip = this._spine();
+      for (const clip of this.clips.values()) {
+        if (clip.type === 'video' && !clip.id.startsWith('rendered-')) {
+          sampleClip = clip;
+          break;
+        }
+      }
+      const detected = await ffmpeg.detectChromaColor(sampleClip.file);
+      if (detected.isGreenish) {
+        keyColor = detected.hex;
+        similarity = 0.08; // tuned down to ensure the avatar is fully opaque/solid
+        blend = 0.03;      // tuned down to prevent edge transparency
+        this._emit('background', { message: `Detected green-screen color ${detected.hex} (auto-keying).` });
+      } else {
+        this._emit('background', { message: `Corner sample ${detected.hex} isn't green — using ${keyColor}.` });
+      }
+    } catch (err) {
+      this._emit('background', { message: `Color auto-detect skipped: ${err.message}` });
+    }
     const prompt = background.backdropPrompt || '';
+
+    // Check if the prompt references an uploaded image clip in our library
+    let imageClip = null;
+    const cleanPrompt = prompt.trim().toLowerCase();
+    for (const clip of this.clips.values()) {
+      if (clip.type === 'image') {
+        const nameLower = clip.name.toLowerCase();
+        if (cleanPrompt.includes(clip.id.toLowerCase()) || cleanPrompt.includes(nameLower) || nameLower.includes(cleanPrompt)) {
+          imageClip = clip;
+          break;
+        }
+      }
+    }
+
+    if (imageClip) {
+      this._emit('background', { message: `Using uploaded image "${imageClip.name}" as backdrop.` });
+      return { blob: imageClip.file, source: 'uploaded', prompt: imageClip.name, keyColor, similarity, blend };
+    }
 
     // "remove", or "replace" without a usable prompt/flag → neutral local backdrop.
     if (background.action === 'remove' || !background.generateImage || !prompt) {

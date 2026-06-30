@@ -94,6 +94,7 @@ export default function App() {
         <Sidebar />
         <AIPanel
           onSubmit={render}
+          onUpload={ingest}
           busy={busy}
           disabled={!keysReady}
           log={log}

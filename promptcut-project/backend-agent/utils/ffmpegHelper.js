@@ -384,6 +384,39 @@ export async function synthesizeBackdrop({
 }
 
 /**
+ * Auto-detect the chroma key color by sampling a corner of the first frame.
+ * Real green screens are NOT pure 0x00FF00 (this clip's is 0x198D34), so keying
+ * against a guessed color fails — we sample the actual backdrop instead.
+ * @param {Blob|File} source
+ * @param {object} [opts]
+ * @param {number} [opts.box=120]  corner sample size in px.
+ * @returns {Promise<{ hex:string, r:number, g:number, b:number, isGreenish:boolean }>}
+ */
+export async function detectChromaColor(source, { box = 120 } = {}) {
+  const ffmpeg = await getFFmpeg();
+  const inName = 'probe_in.mp4';
+  const rawName = 'probe.raw';
+  await ffmpeg.writeFile(inName, await fetchFile(source));
+  // Average a top-left corner (almost always pure backdrop) down to 1×1 px.
+  await ffmpeg.exec([
+    '-i', inName,
+    '-frames:v', '1',
+    '-vf', `crop=${box}:${box}:0:0,scale=1:1`,
+    '-f', 'rawvideo',
+    '-pix_fmt', 'rgb24',
+    rawName,
+  ]);
+  const data = await ffmpeg.readFile(rawName);
+  await safeDelete(ffmpeg, inName, rawName);
+  const r = data[0] ?? 0;
+  const g = data[1] ?? 255;
+  const b = data[2] ?? 0;
+  const hex = '0x' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('').toUpperCase();
+  const isGreenish = g > r * 1.2 && g > b * 1.2;
+  return { hex, r, g, b, isGreenish };
+}
+
+/**
  * Chroma-key a (green-screen) speaker layer and composite it pixel-for-pixel on
  * top of a still background image. The original audio is preserved.
  *
@@ -405,7 +438,7 @@ export async function synthesizeBackdrop({
 export async function compositeChromaKey(
   video,
   background,
-  { color = '0x00FF00', similarity = 0.18, blend = 0.08, width = 1280, height = 720 } = {},
+  { color = '0x00FF00', similarity = 0.18, blend = 0.08, width = 1280, height = 720, despill = true } = {},
 ) {
   const ffmpeg = await getFFmpeg();
   const bgName = 'ck_bg.png';
@@ -417,10 +450,13 @@ export async function compositeChromaKey(
 
   const sim = clamp01(similarity);
   const bln = clamp01(blend);
+  // Green-spill suppression: pull the green channel toward R/B so the green
+  // reflection/halo on hair & edges disappears, without tinting white/skin.
+  const spill = despill ? ',colorchannelmixer=gg=0.55:gr=0.22:gb=0.22' : '';
 
   const filter =
     `[0:v]scale=${width}:${height},setsar=1[bg];` +
-    `[1:v]scale=${width}:${height},chromakey=${color}:${sim}:${bln},setsar=1[fg];` +
+    `[1:v]scale=${width}:${height},chromakey=${color}:${sim}:${bln}${spill},setsar=1[fg];` +
     `[bg][fg]overlay=(W-w)/2:(H-h)/2:shortest=1:format=auto[out]`;
 
   await ffmpeg.exec([

@@ -6,7 +6,7 @@
  */
 import { useEffect } from 'react';
 import {
-  Upload, List, Folder, Video, Music, FileAudio2, ChevronDown, LayoutGrid
+  Upload, List, Folder, Video, Music, FileAudio2, ChevronDown, LayoutGrid, Image
 } from 'lucide-react';
 
 const TABS = ['MY ASSETS', 'LIBRARY', 'TRANSCRIPT'];
@@ -88,11 +88,13 @@ function MyAssets({ clips, onUpload, keysReady, activeClip, onSelectClip }) {
                 <img src={c.thumbnail} alt={c.name} className="h-full w-full object-cover" />
               ) : c.type === 'audio' ? (
                 <FileAudio2 className="h-7 w-7 text-banana-400" />
+              ) : c.type === 'image' ? (
+                <Image className="h-7 w-7 text-banana-400" />
               ) : (
                 <Video className="h-7 w-7 text-banana-400" />
               )}
               {/* Duration badge */}
-              {c.duration > 0 && (
+              {c.type !== 'image' && c.duration > 0 && (
                 <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white tabular-nums backdrop-blur-sm">
                   {fmtDuration(c.duration)}
                 </span>

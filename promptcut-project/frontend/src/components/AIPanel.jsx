@@ -55,13 +55,15 @@ const PRESETS = [
 
 import { useEffect } from 'react';
 
-export default function AIPanel({ onSubmit, busy, disabled, log = [], stage, error, hasResult, width = 320 }) {
+export default function AIPanel({ onSubmit, onUpload, busy, disabled, log = [], stage, error, hasResult, width = 320 }) {
   const [prompt, setPrompt] = useState('');
   const [strategy] = useState('proportional');
   const [withAudio] = useState(true);
   const [firstFrame, setFirstFrame] = useState(null);
   const [lastFrame, setLastFrame] = useState(null);
-  const [mode, setMode] = useState('Video Gen');
+  const [mode, setMode] = useState('Agent');
+  const [agentImage, setAgentImage] = useState(null);
+  const [agentImageUrl, setAgentImageUrl] = useState('');
   const [framesType, setFramesType] = useState('Frames');
   const [aspectRatio, setAspectRatio] = useState('16:9');
   const [duration, setDuration] = useState('5s');
@@ -136,7 +138,7 @@ export default function AIPanel({ onSubmit, busy, disabled, log = [], stage, err
         mode,
         framesType,
         aspectRatio,
-        duration,
+        duration: mode === 'Agent' ? null : duration,
         firstFrame,
         lastFrame,
       });
@@ -224,68 +226,114 @@ export default function AIPanel({ onSubmit, busy, disabled, log = [], stage, err
       {/* Seedance-style Command Console */}
       <div className="mx-3 mb-3 rounded-2xl border border-panel-700 bg-panel-800 p-3 shadow-inner-glow flex flex-col gap-2.5">
         
-        {/* Frame boxes row */}
-        <div className="flex gap-2">
-          {/* First Frame Box */}
-          <label className="relative flex h-12 w-14 shrink-0 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-panel-600 bg-panel-850 hover:bg-panel-750 hover:border-panel-500 transition-colors">
-            {firstFrame ? (
-              <div className="relative h-full w-full group">
-                <img src={firstFrame} alt="First Frame" className="h-full w-full object-cover rounded-lg" />
-                <button
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); setFirstFrame(null); }}
-                  className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white hover:bg-red-600"
-                >
-                  ×
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center text-center p-0.5">
-                <span className="text-[10px] text-slate-400 font-bold leading-none">+</span>
-                <span className="text-[8px] text-slate-500 font-semibold mt-0.5 leading-tight">First Frame</span>
-              </div>
-            )}
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) setFirstFrame(URL.createObjectURL(file));
-              }}
-            />
-          </label>
+        {/* Conditional Image Upload Row */}
+        {mode === 'Agent' ? (
+          /* Agent Mode: Single Backdrop/B-roll Image Box */
+          <div className="flex flex-col gap-1.5 animate-fade-in">
+            <label className="relative flex h-12 w-full cursor-pointer items-center gap-3 rounded-lg border border-dashed border-panel-600 bg-panel-850 hover:bg-panel-750 hover:border-panel-500 transition-all px-3">
+              {agentImage ? (
+                <div className="flex items-center gap-2.5 w-full min-w-0">
+                  <img src={agentImageUrl} alt="Upload preview" className="h-8 w-8 object-cover rounded" />
+                  <span className="text-[11px] text-slate-300 truncate font-semibold flex-1">{agentImage.name}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setAgentImage(null); setAgentImageUrl(''); }}
+                    className="flex h-5 w-5 items-center justify-center rounded-full bg-panel-700 text-xs text-slate-300 hover:bg-red-500 hover:text-white transition-colors"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-slate-400">
+                  <span className="text-sm font-bold text-banana-400">+</span>
+                  <span className="text-[11px] font-semibold text-slate-400">Upload Backdrop / Reference Image</span>
+                </div>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setAgentImage(file);
+                    setAgentImageUrl(URL.createObjectURL(file));
+                    onUpload?.([file], { appendToTimeline: false });
+                    setPrompt((prev) => {
+                      const suffix = ` Replace background with ${file.name}`;
+                      if (!prev.trim()) return `Replace the background with ${file.name}`;
+                      if (prev.toLowerCase().includes(file.name.toLowerCase())) return prev;
+                      return prev.trim() + suffix;
+                    });
+                  }
+                }}
+              />
+            </label>
+          </div>
+        ) : (
+          /* Video/Image Gen Mode: First Frame / Last Frame Row */
+          <div className="flex gap-2 animate-fade-in">
+            {/* First Frame Box */}
+            <label className="relative flex h-12 w-14 shrink-0 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-panel-600 bg-panel-850 hover:bg-panel-750 hover:border-panel-500 transition-colors">
+              {firstFrame ? (
+                <div className="relative h-full w-full group">
+                  <img src={firstFrame} alt="First Frame" className="h-full w-full object-cover rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setFirstFrame(null); }}
+                    className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white hover:bg-red-600"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center text-center p-0.5">
+                  <span className="text-[10px] text-slate-400 font-bold leading-none">+</span>
+                  <span className="text-[8px] text-slate-500 font-semibold mt-0.5 leading-tight">First Frame</span>
+                </div>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) setFirstFrame(URL.createObjectURL(file));
+                }}
+              />
+            </label>
 
-          {/* Last Frame Box */}
-          <label className="relative flex h-12 w-14 shrink-0 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-panel-600 bg-panel-850 hover:bg-panel-750 hover:border-panel-500 transition-colors">
-            {lastFrame ? (
-              <div className="relative h-full w-full group">
-                <img src={lastFrame} alt="Last Frame" className="h-full w-full object-cover rounded-lg" />
-                <button
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); setLastFrame(null); }}
-                  className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white hover:bg-red-600"
-                >
-                  ×
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center text-center p-0.5">
-                <span className="text-[10px] text-slate-400 font-bold leading-none">+</span>
-                <span className="text-[8px] text-slate-500 font-semibold mt-0.5 leading-tight">Last Frame</span>
-              </div>
-            )}
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) setLastFrame(URL.createObjectURL(file));
-              }}
-            />
-          </label>
-        </div>
+            {/* Last Frame Box */}
+            <label className="relative flex h-12 w-14 shrink-0 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-panel-600 bg-panel-850 hover:bg-panel-750 hover:border-panel-500 transition-colors">
+              {lastFrame ? (
+                <div className="relative h-full w-full group">
+                  <img src={lastFrame} alt="Last Frame" className="h-full w-full object-cover rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setLastFrame(null); }}
+                    className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white hover:bg-red-600"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center text-center p-0.5">
+                  <span className="text-[10px] text-slate-400 font-bold leading-none">+</span>
+                  <span className="text-[8px] text-slate-500 font-semibold mt-0.5 leading-tight">Last Frame</span>
+                </div>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) setLastFrame(URL.createObjectURL(file));
+                }}
+              />
+            </label>
+          </div>
+        )}
 
         {/* Text Area */}
         <textarea
@@ -294,7 +342,7 @@ export default function AIPanel({ onSubmit, busy, disabled, log = [], stage, err
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); }}
           rows={2}
           disabled={disabled}
-          placeholder="Describe the video you want PromptCut 2.0 to generate..."
+          placeholder={mode === 'Agent' ? "Ask the AI video editor to edit, cut, or style your video..." : "Describe the video you want PromptCut 2.0 to generate..."}
           className="w-full resize-none rounded-lg border border-panel-700/50 bg-panel-850/50 px-2.5 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-panel-600 transition-colors disabled:opacity-50"
         />
 
@@ -309,27 +357,32 @@ export default function AIPanel({ onSubmit, busy, disabled, log = [], stage, err
               onChange={setMode}
             />
 
-            {/* Frames selection dropdown */}
-            <DropdownSelect
-              icon={<Image className="h-3 w-3" />}
-              value={framesType}
-              options={['Frames', 'Motion']}
-              onChange={setFramesType}
-            />
+            {/* Other dropdowns only show when NOT in Agent mode */}
+            {mode !== 'Agent' && (
+              <>
+                {/* Frames selection dropdown */}
+                <DropdownSelect
+                  icon={<Image className="h-3 w-3" />}
+                  value={framesType}
+                  options={['Frames', 'Motion']}
+                  onChange={setFramesType}
+                />
 
-            {/* Aspect ratio selection dropdown */}
-            <DropdownSelect
-              value={aspectRatio}
-              options={['16:9', '9:16', '1:1']}
-              onChange={setAspectRatio}
-            />
+                {/* Aspect ratio selection dropdown */}
+                <DropdownSelect
+                  value={aspectRatio}
+                  options={['16:9', '9:16', '1:1']}
+                  onChange={setAspectRatio}
+                />
 
-            {/* Duration selection dropdown */}
-            <DropdownSelect
-              value={duration}
-              options={['5s', '10s', '15s']}
-              onChange={setDuration}
-            />
+                {/* Duration selection dropdown */}
+                <DropdownSelect
+                  value={duration}
+                  options={['5s', '10s', '15s']}
+                  onChange={setDuration}
+                />
+              </>
+            )}
           </div>
 
           {/* Cyan Execute Button */}

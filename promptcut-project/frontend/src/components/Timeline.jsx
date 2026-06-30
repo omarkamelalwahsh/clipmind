@@ -464,8 +464,8 @@ export default function Timeline({
                 />
               ))
             ) : timeline.length > 0 ? (
-              // Map timeline segments as audio blocks in A1
-              timeline.map((s) => (
+              // Map timeline segments as audio blocks in A1 (skip static images)
+              timeline.filter((s) => s.type !== 'image').map((s) => (
                 <Block
                   key={`audio-${s.id}`}
                   widthPct={(s.duration / total) * 100}

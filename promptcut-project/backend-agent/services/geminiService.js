@@ -51,12 +51,14 @@ RHYTHM COORDINATOR (sync montages):
 
 COMPOSITE INTENT DETECTION:
 - Populate "intents" with every high-level action you detect, from: ["cut","trim","arrange","background_replace","background_remove","music","sfx","transcribe"].
-- BACKGROUND / GREEN SCREEN / CHROMA KEY: if the user asks to change, replace, or remove a background (green screen, chroma key, "put me in/on ...", "new backdrop"), set "background.action" to "replace" (when a new backdrop is described) or "remove" (when they only want it gone).
+- BACKGROUND / GREEN SCREEN / CHROMA KEY: if the user asks to change, replace, or remove a background (green screen, chroma key, "put me in/on ...", "new backdrop"), set "background.action" to "replace" (when a new backdrop is described/specified) or "remove" (when they only want it gone).
   - Extract the backdrop description into "background.backdropPrompt" as a vivid, self-contained image-generation prompt (e.g. "a cinematic modern AI tech office, soft blue bokeh, glass walls, shallow depth of field").
   - Set "background.generateImage" true when a NEW backdrop should be synthesized by an image model.
-  - "background.keyColor" defaults to "0x00FF00" (green). Use "0x0000FF" only if the user explicitly says blue screen.
-  - "background.similarity" ~0.12–0.25 and "background.blend" ~0.05–0.15 control key tightness; pick sensible values (default 0.18 / 0.08).
-- When "background.action" is "none", leave backdropPrompt empty and generateImage false.`;
+  - IF the user asks to use an EXISTING uploaded image from "availableClips" (type: "image") as the background, set "background.generateImage" to false, and put the exact filename/ID of that uploaded image in "background.backdropPrompt".
+  - "background.keyColor" defaults to "0x198D34" (our video's specific green screen color). NEVER use 0x00FF00 as it makes the speaker transparent.
+  - "background.similarity" must be set to exactly 0.12 and "background.blend" to exactly 0.05. This avoids making the avatar translucent or transparent.
+- When "background.action" is "none", leave backdropPrompt empty and generateImage false.
+- TIMELINE DURATION PRESERVATION: NEVER trim the video duration to 4 or 5 seconds unless the user explicitly requests a trim or a short duration in their prompt. By default, keep the full duration of the original clip intact.`;
 
 /**
  * Gemini responseSchema (subset dialect: uppercase types, no $ref).
