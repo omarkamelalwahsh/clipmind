@@ -5,8 +5,9 @@
  */
 import { useState } from 'react';
 import { UploadCloud } from 'lucide-react';
+import RemotionPreview from '../remotion/RemotionPreview.jsx';
 
-export default function Viewer({ src, busy, stage, progress = 0, onUpload, keysReady, videoRef }) {
+export default function Viewer({ src, busy, stage, progress = 0, onUpload, keysReady, videoRef, remotionData }) {
   const [dragOver, setDragOver] = useState(false);
 
   const handleDrop = (e) => {
@@ -19,7 +20,11 @@ export default function Viewer({ src, busy, stage, progress = 0, onUpload, keysR
     <section className="flex w-[42%] min-w-[320px] shrink-0 flex-col bg-panel-800">
       <div className="px-4 py-3 text-[13px] font-semibold tracking-wide text-slate-300">VIEWER</div>
       <div className="flex flex-1 items-center justify-center p-4">
-        {src ? (
+        {remotionData?.timeline?.length ? (
+          <div className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-black shadow-lift animate-fade-in">
+            <RemotionPreview data={remotionData} />
+          </div>
+        ) : src ? (
           <div className="group relative flex max-h-full max-w-full items-center justify-center">
             <video
               ref={videoRef}

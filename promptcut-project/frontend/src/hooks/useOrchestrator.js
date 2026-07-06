@@ -28,6 +28,7 @@ export function useOrchestrator() {
   const [activeClip, setActiveClip] = useState(null); // the clip currently shown in Viewer + Timeline
   const [timeline, setTimeline] = useState([]);
   const [audio, setAudio] = useState([]);
+  const [remotionData, setRemotionData] = useState(null); // Remotion motion-graphics timeline JSON
 
   const pushLog = useCallback((evt) => {
     setStage(evt.stage);
@@ -232,6 +233,26 @@ export function useOrchestrator() {
     }
   }, [orchestrator, clips.length, transcript]);
 
+  // Motion-graphics (Remotion): produce a frame-based timeline that the Remotion
+  // Player previews live in the Viewer. No clip upload required.
+  const generateMotionGraphics = useCallback(
+    async (prompt) => {
+      if (!orchestrator) return setError('Missing API keys — check frontend/.env');
+      setBusy(true);
+      setError(null);
+      try {
+        const data = await orchestrator.planRemotion(prompt);
+        setRemotionData(data);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setBusy(false);
+        setStage('idle');
+      }
+    },
+    [orchestrator],
+  );
+
   const render = useCallback(
     async (prompt, opts) => {
       if (!orchestrator) return setError('Missing API keys — check frontend/.env');
@@ -324,6 +345,9 @@ export function useOrchestrator() {
     audio,
     setAudio,
     renderCustomTimeline,
+    remotionData,
+    setRemotionData,
+    generateMotionGraphics,
   };
 }
 

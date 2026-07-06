@@ -10,10 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@remotion/player": "^4.0.485",
     "lucide-react": "^0.453.0",
     "promptcut-backend-agent": "*",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.485"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.2",

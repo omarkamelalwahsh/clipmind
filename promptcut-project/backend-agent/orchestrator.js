@@ -27,6 +27,7 @@ import { transcribeVideo } from './services/groqService.js';
 import { generateEditPlan } from './services/geminiService.js';
 import { generateForLayer } from './services/elevenLabsService.js';
 import { generateBackdrop } from './services/geminiImageService.js';
+import { generateRemotionTimeline } from './services/remotionAgentService.js';
 
 /**
  * @typedef {object} OrchestratorConfig
@@ -240,6 +241,33 @@ export class PromptCutOrchestrator {
     } finally {
       this._beatsPromise = null;
     }
+  }
+
+  /**
+   * Motion-graphics path: ask the Remotion agent for a frame-based timeline JSON
+   * (typography, lower-thirds, image/video scenes) that the Remotion Player
+   * renders live in the browser. Uses the spine's transcript as the script when
+   * available. No FFmpeg — pure React/Remotion.
+   * @param {string} userPrompt
+   * @returns {Promise<object>} Remotion timeline JSON.
+   */
+  async planRemotion(userPrompt) {
+    this._emit('remotion', { message: 'Designing motion-graphics timeline (Remotion agent)…' });
+    let transcript = null;
+    try {
+      transcript = this.transcript || (this.spineId ? await this.transcribe() : null);
+    } catch {
+      /* transcript optional for motion graphics */
+    }
+    const data = await generateRemotionTimeline(
+      { userPrompt, context: { transcript } },
+      { apiKey: this.keys.gemini },
+    );
+    this._emit('remotion', {
+      message: `Timeline ready — ${data.timeline.length} scenes, ${data.projectSettings.totalDurationInFrames} frames`,
+      data,
+    });
+    return data;
   }
 
   /* --------------------------- the big one --------------------------- */

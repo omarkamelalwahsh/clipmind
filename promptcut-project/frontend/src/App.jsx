@@ -24,7 +24,20 @@ export default function App() {
     clips, log, result, transcript, busy, stage, progress, error, keysReady,
     activeClip, ingest, selectClip, removeClip, transcribe, render,
     timeline, setTimeline, renderCustomTimeline, audio, setAudio,
+    remotionData, generateMotionGraphics,
   } = useOrchestrator();
+
+  // Route motion-graphics / kinetic-typography requests to the Remotion engine;
+  // everything else goes to the FFmpeg edit pipeline.
+  const smartSubmit = useCallback(
+    (prompt, opts) => {
+      const p = (prompt || '').toLowerCase();
+      const isMotion = /motion graphic|kinetic|typography|animated text|lower.?third|remotion|title card|intro animation/.test(p);
+      if (isMotion) generateMotionGraphics(prompt);
+      else render(prompt, opts);
+    },
+    [generateMotionGraphics, render],
+  );
   const [tab, setTab] = useState('MY ASSETS');
   const [aiPanelWidth, setAiPanelWidth] = useState(320);
   const [isResizing, setIsResizing] = useState(false);
@@ -93,7 +106,7 @@ export default function App() {
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <AIPanel
-          onSubmit={render}
+          onSubmit={smartSubmit}
           onUpload={ingest}
           busy={busy}
           disabled={!keysReady}
@@ -132,6 +145,7 @@ export default function App() {
               onUpload={ingest}
               keysReady={keysReady}
               videoRef={videoRef}
+              remotionData={remotionData}
             />
           </div>
           <Timeline
