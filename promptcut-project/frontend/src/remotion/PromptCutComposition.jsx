@@ -9,9 +9,22 @@
  *
  * `assets` maps assetId (or upload name) → local Blob URL.
  */
-import { AbsoluteFill, Sequence, Audio, Video } from 'remotion';
+import { AbsoluteFill, Sequence, Audio, Video, interpolate, useCurrentFrame } from 'remotion';
 import { VideoScene, MotionGraphic, SceneSequence } from './Scene.jsx';
 import { KineticCaptions } from './KineticCaptions.jsx';
+
+function TestRemotionOverlay() {
+  const frame = useCurrentFrame();
+  const progress = interpolate(frame, [0, 60], [0, 1], { extrapolateRight: 'clamp' });
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', background: 'radial-gradient(circle at 30% 20%, #1d4ed8 0%, #020617 55%, #000 100%)' }}>
+      <div style={{ textAlign: 'center', color: '#fff', padding: 32, borderRadius: 24, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)', boxShadow: '0 20px 50px rgba(0,0,0,0.35)' }}>
+        <div style={{ fontSize: 48, fontWeight: 800, marginBottom: 12, transform: `scale(${0.9 + progress * 0.1})` }}>Remotion is live</div>
+        <div style={{ fontSize: 20, color: 'rgba(255,255,255,0.8)' }}>This overlay proves the player is rendering frame-by-frame.</div>
+      </div>
+    </AbsoluteFill>
+  );
+}
 
 export function PromptCutComposition({
   data,
@@ -29,6 +42,9 @@ export function PromptCutComposition({
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#000' }}>
+      <Sequence from={0} durationInFrames={90} name="remotion-proof">
+        <TestRemotionOverlay />
+      </Sequence>
       {/* Layer 0 — explicit scene timeline if provided, else base video / video track */}
       {scenes.length > 0 ? (
         scenes.map((scene) => {
@@ -52,8 +68,11 @@ export function PromptCutComposition({
         })
       )}
 
-      {/* Layer 2 — motion graphics driven by editable properties */}
-      {mgTrack.map((item) => {
+      {/* Layer 2 — motion graphics driven by editable properties.
+          If `scenes` are present we assume those scenes already include
+          their own motionGraphics and should not be rendered again here,
+          otherwise render the standalone motion graphics track. */}
+      {!scenes.length && mgTrack.map((item) => {
         const d = Math.max(1, item.endFrame - item.startFrame);
         return (
           <Sequence key={item.id} from={item.startFrame} durationInFrames={d} name={item.id}>

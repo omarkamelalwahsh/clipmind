@@ -55,6 +55,22 @@ function useTextAnimation(effect) {
   }
 }
 
+function getTextValue(properties, keys = []) {
+  for (const key of keys) {
+    const value = properties?.[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function getCountdownValue(properties, frame, fps) {
+  const start = Number(properties?.startValue ?? properties?.from ?? properties?.value ?? 10);
+  const end = Number(properties?.endValue ?? properties?.to ?? 0);
+  const duration = Math.max(1, Number(properties?.durationFrames ?? fps * 2));
+  const progress = interpolate(frame, [0, duration], [0, 1], { extrapolateRight: 'clamp' });
+  return Math.max(0, Math.round(start + (end - start) * progress));
+}
+
 /* ------------------------------ video scene ------------------------------ */
 
 export function VideoScene({ item, durationInFrames, assetUrl }) {
@@ -62,11 +78,11 @@ export function VideoScene({ item, durationInFrames, assetUrl }) {
   const transform = useKenBurns(item.animation, durationInFrames);
 
   if (!assetUrl) {
-    // Asset not generated/uploaded yet → labelled placeholder.
+    // Asset not generated/uploaded yet → generic loading placeholder.
     return (
       <AbsoluteFill style={{ backgroundColor: '#11161d', justifyContent: 'center', alignItems: 'center' }}>
-        <div style={{ opacity, color: 'rgba(255,255,255,0.5)', fontFamily: 'Montserrat, sans-serif', fontSize: 34, textAlign: 'center', padding: '0 10%' }}>
-          🎬 {item.type} — {item.assetId}
+        <div style={{ opacity, color: 'rgba(255,255,255,0.65)', fontFamily: 'Montserrat, sans-serif', fontSize: 32, textAlign: 'center', padding: '0 10%' }}>
+          Generating visual asset...
         </div>
       </AbsoluteFill>
     );
@@ -103,55 +119,126 @@ export function MotionGraphic({ item, durationInFrames }) {
     ? <WordByWordRenderer words={words} frame={frame} fps={fps} color={p.color || '#FFFFFF'} />
     : <PlainTextRenderer text={p.text || ''} effect={p.animationEffect} frame={frame} durationInFrames={durationInFrames} />;
 
-  if (item.type === 'pulse_wave') {
-    return <PulseWave properties={item.properties} />;
+  switch (item.type) {
+    case 'pulse_wave':
+      return <PulseWave properties={item.properties} />;
+    case 'hud_ring':
+      return <HudRing properties={item.properties} />;
+    case 'kinetic_text':
+      return <KineticText properties={item.properties} />;
+    case 'lower_third': {
+      return (
+        <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'flex-start', padding: '0 0 9% 6%' }}>
+          <div
+            style={{
+              ...baseStyle,
+              padding: '16px 32px',
+              borderRadius: 16,
+              background: 'rgba(255,255,255,0.10)',
+              border: '1px solid rgba(255,255,255,0.25)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
+            }}
+          >
+            {content}
+          </div>
+        </AbsoluteFill>
+      );
+    }
+    case 'title_card':
+    case 'title_animation': {
+      const title = getTextValue(p, ['title', 'headline', 'text']);
+      const subtitle = getTextValue(p, ['subtitle', 'byline', 'caption']);
+      const reveal = spring({ frame, fps, config: { damping: 14, mass: 0.6, stiffness: 120 } });
+      return (
+        <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', padding: '0 8%' }}>
+          <div style={{ width: '100%', maxWidth: 900, transform: `translateY(${(1 - reveal) * 24}px)`, opacity: reveal * opacity, textAlign: 'center' }}>
+            <div style={{ height: 3, width: 96, margin: '0 auto 18px', background: p.accentColor || '#00E5FF', borderRadius: 999, boxShadow: `0 0 20px ${p.accentColor || '#00E5FF'}` }} />
+            <div style={{ fontFamily: `${p.fontFamily || 'Montserrat'}, Inter, sans-serif`, fontSize: p.fontSize ? Math.max(36, p.fontSize) : 68, fontWeight: 800, color: p.color || '#FFFFFF', textShadow: '0 8px 30px rgba(0,0,0,0.55)', lineHeight: 1.08 }}>
+              {title || 'Title'}
+            </div>
+            {subtitle ? <div style={{ marginTop: 12, fontSize: 24, color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>{subtitle}</div> : null}
+          </div>
+        </AbsoluteFill>
+      );
+    }
+    case 'countdown':
+    case 'timer': {
+      const value = getCountdownValue(p, frame, fps);
+      const label = getTextValue(p, ['label', 'caption', 'title']);
+      return (
+        <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, opacity }}>
+            <div style={{ width: 140, height: 140, borderRadius: '50%', border: `4px solid ${p.color || '#FFFFFF'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 48, fontWeight: 800, color: p.color || '#FFFFFF', boxShadow: `0 0 24px ${p.accentColor || '#00E5FF'}` }}>
+              {value}
+            </div>
+            {label ? <div style={{ fontSize: 24, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>{label}</div> : null}
+          </div>
+        </AbsoluteFill>
+      );
+    }
+    case 'chart':
+    case 'infographic':
+    case 'data_card': {
+      const rawSeries = Array.isArray(p.series) ? p.series : Array.isArray(p.values) ? p.values.map((value, index) => ({ label: p.labels?.[index] || `Item ${index + 1}`, value })) : [];
+      const maxValue = Math.max(1, ...rawSeries.map((entry) => Number(entry.value || 0)));
+      return (
+        <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', padding: '0 8%' }}>
+          <div style={{ width: '100%', maxWidth: 900, borderRadius: 24, padding: 28, background: 'rgba(5,10,24,0.72)', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 20px 50px rgba(0,0,0,0.4)', opacity }}>
+            {getTextValue(p, ['title', 'headline']) ? <div style={{ fontSize: 28, fontWeight: 800, color: p.color || '#FFFFFF', marginBottom: 16 }}>{getTextValue(p, ['title', 'headline'])}</div> : null}
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(4, rawSeries.length || 1)}, minmax(0, 1fr))`, gap: 16 }}>
+              {rawSeries.length > 0 ? rawSeries.map((entry, index) => {
+                const value = Number(entry.value || 0);
+                const height = interpolate(value, [0, maxValue], [18, 120], { extrapolateRight: 'clamp' });
+                const active = spring({ frame: frame - index * 8, fps, config: { damping: 12, mass: 0.5, stiffness: 140 } });
+                return (
+                  <div key={`${entry.label}-${index}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: '100%', height: 140, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                      <div style={{ width: '70%', height: `${Math.max(18, height * active)}px`, minHeight: 18, borderRadius: 12, background: index % 2 === 0 ? '#00E5FF' : '#F59E0B', boxShadow: `0 0 18px ${index % 2 === 0 ? '#00E5FF' : '#F59E0B'}` }} />
+                    </div>
+                    <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }}>{entry.label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: p.color || '#FFFFFF' }}>{value}</div>
+                  </div>
+                );
+              }) : <div style={{ color: 'rgba(255,255,255,0.7)' }}>No data</div>}
+            </div>
+          </div>
+        </AbsoluteFill>
+      );
+    }
+    case 'logo_animation':
+    case 'logo_reveal': {
+      const reveal = spring({ frame, fps, config: { damping: 14, mass: 0.6, stiffness: 140 } });
+      return (
+        <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18, opacity: reveal * opacity }}>
+            <div style={{ width: 92, height: 92, borderRadius: 24, background: `linear-gradient(135deg, ${p.accentColor || '#00E5FF'}, ${p.color || '#FFFFFF'})`, transform: `scale(${reveal})`, boxShadow: `0 0 28px ${p.accentColor || '#00E5FF'}` }} />
+            <div style={{ fontSize: 34, fontWeight: 800, color: p.color || '#FFFFFF' }}>{getTextValue(p, ['title', 'brand', 'text']) || 'Brand'}</div>
+          </div>
+        </AbsoluteFill>
+      );
+    }
+    case 'social_overlay': {
+      const cta = getTextValue(p, ['cta', 'buttonText', 'text']);
+      return (
+        <AbsoluteFill style={{ justifyContent: 'flex-start', alignItems: 'flex-end', padding: '4% 4% 0 0' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-end', opacity: opacity * 0.95 }}>
+            <div style={{ ...baseStyle, fontSize: (p.fontSize || 40) * 0.7 }}>{content}</div>
+            {cta ? <div style={{ padding: '10px 16px', borderRadius: 999, background: p.accentColor || '#00E5FF', color: '#06121F', fontWeight: 800 }}>{cta}</div> : null}
+          </div>
+        </AbsoluteFill>
+      );
+    }
+    default:
+      return (
+        <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', padding: '0 8%' }}>
+          <div style={{ ...baseStyle, textAlign: 'center', lineHeight: 1.15, textShadow: '0 6px 30px rgba(0,0,0,0.6)', WebkitTextStroke: '2px rgba(0,0,0,0.4)' }}>
+            {content}
+          </div>
+        </AbsoluteFill>
+      );
   }
-
-  if (item.type === 'hud_ring') {
-    return <HudRing properties={item.properties} />;
-  }
-
-  if (item.type === 'kinetic_text') {
-    return <KineticText properties={item.properties} />;
-  }
-
-  if (item.type === 'lower_third') {
-    return (
-      <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'flex-start', padding: '0 0 9% 6%' }}>
-        <div
-          style={{
-            ...baseStyle,
-            padding: '16px 32px',
-            borderRadius: 16,
-            background: 'rgba(255,255,255,0.10)',
-            border: '1px solid rgba(255,255,255,0.25)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
-          }}
-        >
-          {content}
-        </div>
-      </AbsoluteFill>
-    );
-  }
-
-  if (item.type === 'social_overlay') {
-    return (
-      <AbsoluteFill style={{ justifyContent: 'flex-start', alignItems: 'flex-end', padding: '4% 4% 0 0' }}>
-        <div style={{ ...baseStyle, fontSize: (p.fontSize || 40) * 0.7, opacity: opacity * 0.9 }}>{content}</div>
-      </AbsoluteFill>
-    );
-  }
-
-  // title_card / chart
-  return (
-    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', padding: '0 8%' }}>
-      <div style={{ ...baseStyle, textAlign: 'center', lineHeight: 1.15, textShadow: '0 6px 30px rgba(0,0,0,0.6)', WebkitTextStroke: '2px rgba(0,0,0,0.4)' }}>
-        {content}
-      </div>
-    </AbsoluteFill>
-  );
 }
 
 export function SceneSequence({ scene, durationInFrames }) {
@@ -172,19 +259,21 @@ export function SceneSequence({ scene, durationInFrames }) {
   return (
     <AbsoluteFill style={{ ...style, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
       {scene.motionGraphics?.map((mg) => {
-        if (mg.type === 'pulse_wave') return <PulseWave key={mg.id} properties={mg.properties} />;
-        if (mg.type === 'hud_ring') return <HudRing key={mg.id} properties={mg.properties} />;
-        if (mg.type === 'kinetic_text') return <KineticText key={mg.id} properties={mg.properties} />;
-        return null;
+        switch (mg.type) {
+          case 'pulse_wave':
+            return <PulseWave key={mg.id} properties={mg.properties} />;
+          case 'hud_ring':
+            return <HudRing key={mg.id} properties={mg.properties} />;
+          case 'kinetic_text':
+            return <KineticText key={mg.id} properties={mg.properties} />;
+          default:
+            return <MotionGraphic key={mg.id} item={mg} durationInFrames={durationInFrames} />;
+        }
       })}
     </AbsoluteFill>
   );
 }
 
-/**
- * Renders words one-by-one with the active word highlighted in yellow and
- * a spring pop animation. Words not yet spoken are dimmed.
- */
 function WordByWordRenderer({ words, frame, fps, color }) {
   return (
     <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0 14px', justifyContent: 'center' }}>

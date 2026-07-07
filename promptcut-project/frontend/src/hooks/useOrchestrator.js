@@ -169,6 +169,7 @@ export function useOrchestrator() {
             setTimeline((prev) => layoutSegments([...prev, ...newSegments]));
           }
         }
+        setRemotionData(null);
 
         // Trigger auto-transcript in background when we have video clips
         const hasVideo = enriched.some((c) => c.type !== 'audio');
@@ -186,6 +187,7 @@ export function useOrchestrator() {
 
   const selectClip = useCallback((clip) => {
     setActiveClip(clip);
+    setRemotionData(null);
     if (orchestrator && clip && clip.type !== 'audio') {
       try {
         orchestrator.setSpine(clip.id);
@@ -262,6 +264,7 @@ export function useOrchestrator() {
       setBusy(true);
       setError(null);
       setResult(null);
+      setRemotionData(null);
       try {
         const out = await orchestrator.planAndRender(prompt, opts);
         setResult(out);
@@ -300,6 +303,7 @@ export function useOrchestrator() {
       if (!orchestrator) return setError('Missing API keys — check frontend/.env');
       setBusy(true);
       setError(null);
+      setRemotionData(null);
       try {
         const out = await orchestrator.renderTimeline(customSegments, audio);
         setResult((prev) => ({

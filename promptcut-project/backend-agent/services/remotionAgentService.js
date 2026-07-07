@@ -85,6 +85,19 @@ function normalizeTimeline(plan, { width, height }) {
     })
     .sort(byStart);
 
+  const scenes = (plan.timeline?.scenes || []).map((scene, i) => {
+    const startFrame = Math.max(0, Math.round(scene.startFrame || 0));
+    const endFrame = Math.max(startFrame + 1, Math.round(scene.endFrame || startFrame + fps * 5));
+    return {
+      ...scene,
+      id: scene.id || scene.sceneId || `scene_${i}`,
+      sceneId: scene.sceneId || scene.id || `scene_${i}`,
+      startFrame,
+      endFrame,
+      motionGraphics: Array.isArray(scene.motionGraphics) ? scene.motionGraphics : [],
+    };
+  });
+
   // Auto-merge: if the model created one item per word (>8 items, all short,
   // same type), collapse them into sentence containers.
   const motionGraphicsTrack = mergeWordLevelItems(rawMg, fps);
@@ -107,7 +120,7 @@ function normalizeTimeline(plan, { width, height }) {
       imagePrompts: plan.aiGeneration?.imagePrompts || [],
       videoPrompts: plan.aiGeneration?.videoPrompts || [],
     },
-    timeline: { videoTrack, audioTrack, motionGraphicsTrack },
+    timeline: { videoTrack, audioTrack, motionGraphicsTrack, scenes },
   };
 }
 

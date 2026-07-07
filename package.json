@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@remotion/cli": "^4.0.486",
+    "@remotion/renderer": "^4.0.486",
+    "remotion": "^4.0.486"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  }
+}

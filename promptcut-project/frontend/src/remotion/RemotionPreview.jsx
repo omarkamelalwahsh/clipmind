@@ -125,7 +125,9 @@ export default function RemotionPreview({
 
   // Nothing to show unless we have a base video OR any agent track content (v2).
   const hasTracks =
-    (data?.timeline?.videoTrack?.length || 0) + (data?.timeline?.motionGraphicsTrack?.length || 0) > 0;
+    (data?.timeline?.videoTrack?.length || 0) +
+    (data?.timeline?.motionGraphicsTrack?.length || 0) +
+    (data?.timeline?.scenes?.length || 0) > 0;
   if (!baseVideoUrl && !hasTracks) return null;
 
   return (
