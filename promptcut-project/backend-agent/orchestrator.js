@@ -259,12 +259,16 @@ export class PromptCutOrchestrator {
     } catch {
       /* transcript optional for motion graphics */
     }
+    const uploads = [...this.clips.values()].map((c) => ({ name: c.name, type: c.type }));
     const data = await generateRemotionTimeline(
-      { userPrompt, context: { transcript } },
+      { userPrompt, context: { transcript, uploads } },
       { apiKey: this.keys.gemini },
     );
+    const tl = data.timeline || {};
+    const sceneCount =
+      (tl.videoTrack?.length || 0) + (tl.motionGraphicsTrack?.length || 0) + (tl.audioTrack?.length || 0);
     this._emit('remotion', {
-      message: `Timeline ready — ${data.timeline.length} scenes, ${data.projectSettings.totalDurationInFrames} frames`,
+      message: `Timeline ready — ${sceneCount} items across 3 tracks, ${data.projectSettings.totalDurationInFrames} frames`,
       data,
     });
     return data;

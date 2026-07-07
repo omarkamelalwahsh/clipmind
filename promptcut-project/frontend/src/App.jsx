@@ -1,19 +1,22 @@
 /**
- * App.jsx — the Master Dashboard (ChatCut-style 3-pane + timeline layout, in the
- * PromptCut "Nano Banana" theme). Composes dumb components and wires them to the
- * orchestrator via useOrchestrator. Holds NO editing logic and touches NO API.
+ * App.jsx — the Master Dashboard (ChatCut-style 5-panel layout).
  *
- *  ┌───────────────────────── TopBar ─────────────────────────┐
- *  │ AIPanel │       AssetsPanel        │        Viewer        │
- *  │ (left)  │  MY ASSETS/LIB/TRANSCRIPT│   preview / drop     │
- *  │         ├──────────────── Timeline ──────────────────────┤
- *  └──────────────────────────────────────────────────────────┘
+ * Matches ChatCut's documented sections:
+ *
+ *  ┌────────────────────── Menu (TopBar) ─────────────────────┐
+ *  │  Agent (AI Panel)  │   Media (Assets)   │    Player      │
+ *  │  resizable left    │   fixed 280px      │    flex-1      │
+ *  │                    │                    │                │
+ *  │                    ├────────── Timeline ─────────────────┤
+ *  └─────────────────────────────────────────────────────────┘
+ *
+ * No Sidebar — ChatCut doesn't have one. The Agent panel serves as
+ * the left column. All editing logic lives in useOrchestrator.
  */
-import { useCallback, useRef, useState, useEffect } from 'react';
+import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { AlertTriangle, KeyRound } from 'lucide-react';
 import { useOrchestrator } from './hooks/useOrchestrator.js';
 import TopBar from './components/TopBar.jsx';
-import Sidebar from './components/Sidebar.jsx';
 import AIPanel from './components/AIPanel.jsx';
 import AssetsPanel from './components/AssetsPanel.jsx';
 import Viewer from './components/Viewer.jsx';
@@ -24,7 +27,7 @@ export default function App() {
     clips, log, result, transcript, busy, stage, progress, error, keysReady,
     activeClip, ingest, selectClip, removeClip, transcribe, render,
     timeline, setTimeline, renderCustomTimeline, audio, setAudio,
-    remotionData, generateMotionGraphics,
+    remotionData, setRemotionData, generateMotionGraphics,
   } = useOrchestrator();
 
   // Route motion-graphics / kinetic-typography requests to the Remotion engine;
@@ -38,12 +41,15 @@ export default function App() {
     },
     [generateMotionGraphics, render],
   );
-  const [tab, setTab] = useState('MY ASSETS');
+
+  const [tab, setTab] = useState('MEDIA');
   const [aiPanelWidth, setAiPanelWidth] = useState(320);
   const [isResizing, setIsResizing] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(true);
 
   // Shared video ref so Timeline can control playback
   const videoRef = useRef(null);
+  const viewerRef = useRef(null);
 
   const needTranscript = useCallback(() => { transcribe(); }, [transcribe]);
 
@@ -59,9 +65,8 @@ export default function App() {
   const resize = useCallback(
     (mouseMoveEvent) => {
       if (isResizing) {
-        // Offset by 60px due to Sidebar
-        const newWidth = mouseMoveEvent.clientX - 60;
-        if (newWidth >= 260 && newWidth <= 600) {
+        const newWidth = mouseMoveEvent.clientX;
+        if (newWidth >= 260 && newWidth <= 500) {
           setAiPanelWidth(newWidth);
         }
       }
@@ -86,10 +91,23 @@ export default function App() {
   // Viewer source: rendered result takes priority, else show active uploaded clip
   const viewerSrc = result?.previewUrl || activeClip?.url || activeClip?.objectUrl || null;
 
+  // Asset map for the Remotion compositor: upload name → local Blob URL, so
+  // videoTrack items of type "user_upload" resolve without any server.
+  const remotionAssets = useMemo(() => {
+    const map = {};
+    for (const c of clips) {
+      const url = c.url || c.objectUrl;
+      if (url) map[c.name] = url;
+    }
+    return map;
+  }, [clips]);
+
   return (
     <div className="flex h-full w-full flex-col bg-panel-900 text-slate-100">
+      {/* ─── Menu Bar ─── */}
       <TopBar result={result} />
 
+      {/* ─── Banners ─── */}
       {(!keysReady || error) && (
         <div className="space-y-1.5 px-3 pt-2 animate-slide-up">
           {!keysReady && (
@@ -103,8 +121,9 @@ export default function App() {
         </div>
       )}
 
+      {/* ─── Main Content: Agent | Media | Player ─── */}
       <div className="flex min-h-0 flex-1">
-        <Sidebar />
+        {/* Agent Panel (resizable) */}
         <AIPanel
           onSubmit={smartSubmit}
           onUpload={ingest}
@@ -116,6 +135,7 @@ export default function App() {
           hasResult={Boolean(result?.previewUrl || result?.transcriptOnly)}
           transcript={result?.transcriptOnly ? transcript : null}
           width={aiPanelWidth}
+          onNeedTranscript={needTranscript}
         />
 
         {/* Resizable Divider */}
@@ -124,8 +144,10 @@ export default function App() {
           className={`w-[4px] shrink-0 cursor-col-resize hover:bg-banana-400/80 bg-panel-700/60 transition-colors z-30 ${isResizing ? 'bg-banana-400' : ''}`}
         />
 
+        {/* Media + Player + Timeline */}
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1">
+            {/* Media Panel */}
             <AssetsPanel
               tab={tab}
               setTab={setTab}
@@ -136,7 +158,12 @@ export default function App() {
               keysReady={keysReady}
               activeClip={activeClip}
               onSelectClip={selectClip}
+              onDeleteClip={removeClip}
+              remotionData={remotionData}
+              setRemotionData={setRemotionData}
             />
+
+            {/* Player */}
             <Viewer
               src={viewerSrc}
               busy={busy}
@@ -145,22 +172,35 @@ export default function App() {
               onUpload={ingest}
               keysReady={keysReady}
               videoRef={videoRef}
+              viewerRef={viewerRef}
               remotionData={remotionData}
+              setRemotionData={setRemotionData}
+              transcript={transcript}
+              remotionAssets={remotionAssets}
+              showTimeline={showTimeline}
+              onToggleTimeline={() => setShowTimeline((v) => !v)}
             />
           </div>
-          <Timeline
-            result={result}
-            clips={clips}
-            activeClip={activeClip}
-            videoRef={videoRef}
-            onDeleteClip={removeClip}
-            timeline={timeline}
-            setTimeline={setTimeline}
-            audio={audio}
-            setAudio={setAudio}
-            onRenderCustomTimeline={renderCustomTimeline}
-            src={viewerSrc}
-          />
+
+          {/* Timeline (toggleable from Player controls) */}
+          {showTimeline && (
+            <Timeline
+              result={result}
+              clips={clips}
+              activeClip={activeClip}
+              videoRef={videoRef}
+              viewerRef={viewerRef}
+              onDeleteClip={removeClip}
+              timeline={timeline}
+              setTimeline={setTimeline}
+              audio={audio}
+              setAudio={setAudio}
+              onRenderCustomTimeline={renderCustomTimeline}
+              src={viewerSrc}
+              remotionData={remotionData}
+              setRemotionData={setRemotionData}
+            />
+          )}
         </div>
       </div>
     </div>

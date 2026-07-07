@@ -5,7 +5,7 @@
  */
 import { useState, useRef } from 'react';
 import {
-  Bot, ChevronDown, Wand2, Loader2, AlertTriangle, CheckCircle2, Activity, Video, Image, Square, ThumbsUp, ThumbsDown, Copy
+  Bot, ChevronDown, Wand2, Loader2, AlertTriangle, CheckCircle2, Activity, Video, Image, Square, ThumbsUp, ThumbsDown, Copy, FileText, Plus, Paperclip
 } from 'lucide-react';
 
 const PRESETS = [
@@ -55,7 +55,7 @@ const PRESETS = [
 
 import { useEffect } from 'react';
 
-export default function AIPanel({ onSubmit, onUpload, busy, disabled, log = [], stage, error, hasResult, width = 320 }) {
+export default function AIPanel({ onSubmit, onUpload, busy, disabled, log = [], stage, error, hasResult, width = 320, onNeedTranscript }) {
   const [prompt, setPrompt] = useState('');
   const [strategy] = useState('proportional');
   const [withAudio] = useState(true);
@@ -149,8 +149,16 @@ export default function AIPanel({ onSubmit, onUpload, busy, disabled, log = [], 
   return (
     <aside style={{ width: `${width}px` }} className="flex shrink-0 flex-col border-r border-panel-700 bg-panel-850 transition-[width] duration-75">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 text-sm font-semibold tracking-wide text-slate-300 border-b border-panel-700/40">
-        <span className="text-banana-400">AI Agent</span>
+      <div className="flex items-center justify-between px-4 py-2.5 text-sm font-semibold tracking-wide text-slate-300 border-b border-panel-700/40">
+        <span className="text-banana-400 text-[13px]">Agent</span>
+        <button
+          onClick={onNeedTranscript}
+          title="Get Transcript"
+          className="flex items-center gap-1.5 rounded-lg border border-panel-700 bg-panel-800 px-2.5 py-1 text-[10px] font-semibold text-slate-400 hover:text-slate-200 hover:border-panel-600 transition-colors"
+        >
+          <FileText className="h-3 w-3" />
+          Transcript
+        </button>
       </div>
 
       {/* Conversation list with suggestions */}
@@ -335,16 +343,31 @@ export default function AIPanel({ onSubmit, onUpload, busy, disabled, log = [], 
           </div>
         )}
 
-        {/* Text Area */}
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); }}
-          rows={2}
-          disabled={disabled}
-          placeholder={mode === 'Agent' ? "Ask the AI video editor to edit, cut, or style your video..." : "Describe the video you want PromptCut 2.0 to generate..."}
-          className="w-full resize-none rounded-lg border border-panel-700/50 bg-panel-850/50 px-2.5 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-panel-600 transition-colors disabled:opacity-50"
-        />
+        {/* Text Area with + upload button */}
+        <div className="relative">
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); }}
+            rows={2}
+            disabled={disabled}
+            placeholder={mode === 'Agent' ? "Ask the AI video editor to edit, cut, or style your video..." : "Describe the video you want PromptCut 2.0 to generate..."}
+            className="w-full resize-none rounded-lg border border-panel-700/50 bg-panel-850/50 pl-9 pr-2.5 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-panel-600 transition-colors disabled:opacity-50"
+          />
+          {/* + Upload button (bottom-left corner of chat input) */}
+          <label className="absolute left-2 top-2 flex h-5 w-5 cursor-pointer items-center justify-center rounded-md bg-panel-700 text-slate-400 hover:bg-banana-500/20 hover:text-banana-400 transition-colors" title="Upload media into chat">
+            <Plus className="h-3.5 w-3.5" />
+            <input
+              type="file"
+              accept="video/*,image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.length) onUpload?.(e.target.files);
+              }}
+            />
+          </label>
+        </div>
 
         {/* Parameter Row */}
         <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">

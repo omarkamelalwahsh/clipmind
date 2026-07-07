@@ -1,25 +1,48 @@
 /**
- * AssetsPanel — the center column. Three tabs:
- *   MY ASSETS  → the media bin (orchestrator clips)
- *   LIBRARY    → static / fallback assets (public/)
- *   TRANSCRIPT → word-level transcript from Groq Whisper (lazy-loaded)
+ * AssetsPanel → Media — ChatCut-style media library.
+ *
+ * Three tabs:
+ *   MEDIA      → the media bin (orchestrator clips) with 3-dot menus
+ *   LIBRARY    → built-in fallback assets
+ *   TRANSCRIPT → word-level transcript from Groq Whisper
+ *
+ * Each media item has a 3-dot context menu with:
+ *   - Download
+ *   - Delete
+ *   - Retry Transcription
  */
-import { useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
-  Upload, List, Folder, Video, Music, FileAudio2, ChevronDown, LayoutGrid, Image
+  Upload, List, Folder, Video, Music, FileAudio2,
+  ChevronDown, LayoutGrid, Image, MoreVertical,
+  Download, Trash2, RefreshCw, Settings2,
 } from 'lucide-react';
+import PropertyPanel from './PropertyPanel.jsx';
 
-const TABS = ['MY ASSETS', 'LIBRARY', 'TRANSCRIPT'];
+const TABS = ['MEDIA', 'LIBRARY', 'TRANSCRIPT', 'PROPERTIES'];
 
-export default function AssetsPanel({ tab, setTab, clips, transcript, onUpload, onNeedTranscript, keysReady, activeClip, onSelectClip }) {
+export default function AssetsPanel({
+  tab,
+  setTab,
+  clips,
+  transcript,
+  onUpload,
+  onNeedTranscript,
+  keysReady,
+  activeClip,
+  onSelectClip,
+  onDeleteClip,
+  remotionData,
+  setRemotionData,
+}) {
   useEffect(() => {
     if (tab === 'TRANSCRIPT') onNeedTranscript?.();
   }, [tab, onNeedTranscript]);
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col border-r border-panel-700 bg-panel-850">
+    <section className="flex w-[280px] shrink-0 flex-col border-r border-panel-700 bg-panel-850">
       {/* Tab bar */}
-      <div className="flex items-center gap-6 px-4 pt-3 text-[13px] border-b border-panel-700/40">
+      <div className="flex items-center gap-5 px-4 pt-3 text-[11px] border-b border-panel-700/40">
         {TABS.map((t) => (
           <button
             key={t}
@@ -42,10 +65,10 @@ export default function AssetsPanel({ tab, setTab, clips, transcript, onUpload, 
           THUMBNAILS
           <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <label title="Import" className="cursor-pointer text-slate-400 hover:text-banana-400 p-1.5 rounded hover:bg-panel-750 transition-colors">
             <Upload className="h-3.5 w-3.5" />
-            <input type="file" accept="video/*,audio/*" multiple disabled={!keysReady} className="hidden"
+            <input type="file" accept="video/*,audio/*,image/*" multiple disabled={!keysReady} className="hidden"
               onChange={(e) => e.target.files?.length && onUpload(e.target.files)} />
           </label>
           <button title="Grid View" className="text-banana-400 p-1.5 rounded hover:bg-panel-750 transition-colors">
@@ -59,57 +82,153 @@ export default function AssetsPanel({ tab, setTab, clips, transcript, onUpload, 
 
       {/* Content */}
       <div className="min-h-0 flex-1 overflow-y-auto p-3 animate-fade-in" key={tab}>
-        {tab === 'MY ASSETS' && <MyAssets clips={clips} onUpload={onUpload} keysReady={keysReady} activeClip={activeClip} onSelectClip={onSelectClip} />}
+        {tab === 'MEDIA' && (
+          <MediaGrid
+            clips={clips}
+            onUpload={onUpload}
+            keysReady={keysReady}
+            activeClip={activeClip}
+            onSelectClip={onSelectClip}
+            onDeleteClip={onDeleteClip}
+            onNeedTranscript={onNeedTranscript}
+          />
+        )}
         {tab === 'LIBRARY' && <Library />}
         {tab === 'TRANSCRIPT' && <Transcript transcript={transcript} hasClips={clips.length > 0} />}
+        {tab === 'PROPERTIES' && (
+          remotionData ? (
+            <div className="-mx-3 -my-3 h-full">
+              <PropertyPanel remotionData={remotionData} setRemotionData={setRemotionData} />
+            </div>
+          ) : (
+            <Empty label="No Properties" hint="Generate motion graphics to view properties here." />
+          )
+        )}
       </div>
     </section>
   );
 }
 
-function MyAssets({ clips, onUpload, keysReady, activeClip, onSelectClip }) {
-  if (!clips.length) return <Empty label="This bin is empty" hint="Import media or drag clips here." onUpload={onUpload} keysReady={keysReady} />;
+/* ─── Media Grid with 3-dot menus ─── */
+function MediaGrid({ clips, onUpload, keysReady, activeClip, onSelectClip, onDeleteClip, onNeedTranscript }) {
+  if (!clips.length) return <Empty label="No media yet" hint="Import media or drag files into the editor." onUpload={onUpload} keysReady={keysReady} />;
+
   return (
     <div className="grid grid-cols-2 gap-2">
-      {clips.map((c) => {
-        const isActive = activeClip?.id === c.id;
-        return (
-          <button
-            key={c.id}
-            onClick={() => onSelectClip?.(c)}
-            className={`group overflow-hidden rounded-xl border text-left transition-all hover:shadow-lift-sm ${
-              isActive
-                ? 'border-banana-500/60 ring-1 ring-banana-500/30 shadow-glow-banana-sm'
-                : 'border-panel-600/60 bg-panel-750 hover:border-panel-500'
-            }`}
-          >
-            <div className="relative flex h-20 items-center justify-center bg-panel-900/50">
-              {c.thumbnail ? (
-                <img src={c.thumbnail} alt={c.name} className="h-full w-full object-cover" />
-              ) : c.type === 'audio' ? (
-                <FileAudio2 className="h-7 w-7 text-banana-400" />
-              ) : c.type === 'image' ? (
-                <Image className="h-7 w-7 text-banana-400" />
-              ) : (
-                <Video className="h-7 w-7 text-banana-400" />
-              )}
-              {/* Duration badge */}
-              {c.type !== 'image' && c.duration > 0 && (
-                <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white tabular-nums backdrop-blur-sm">
-                  {fmtDuration(c.duration)}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center justify-between gap-1 px-2.5 py-2">
-              <span className="truncate text-[11px] font-medium text-slate-200">{c.name}</span>
-            </div>
-          </button>
-        );
-      })}
+      {clips.map((c) => (
+        <MediaItem
+          key={c.id}
+          clip={c}
+          isActive={activeClip?.id === c.id}
+          onSelect={() => onSelectClip?.(c)}
+          onDelete={() => onDeleteClip?.(c.id)}
+          onRetryTranscript={onNeedTranscript}
+        />
+      ))}
     </div>
   );
 }
 
+function MediaItem({ clip, isActive, onSelect, onDelete, onRetryTranscript }) {
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setShowMenu(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleDownload = () => {
+    setShowMenu(false);
+    const url = clip.url || clip.objectUrl;
+    if (!url) return;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = clip.name;
+    a.click();
+  };
+
+  const handleDelete = () => {
+    setShowMenu(false);
+    onDelete?.();
+  };
+
+  const handleRetryTranscript = () => {
+    setShowMenu(false);
+    onRetryTranscript?.();
+  };
+
+  return (
+    <div className="relative group">
+      <button
+        onClick={onSelect}
+        className={`w-full overflow-hidden rounded-xl border text-left transition-all hover:shadow-lift-sm ${
+          isActive
+            ? 'border-banana-500/60 ring-1 ring-banana-500/30 shadow-glow-banana-sm'
+            : 'border-panel-600/60 bg-panel-750 hover:border-panel-500'
+        }`}
+      >
+        <div className="relative flex h-[72px] items-center justify-center bg-panel-900/50">
+          {clip.thumbnail ? (
+            <img src={clip.thumbnail} alt={clip.name} className="h-full w-full object-cover" />
+          ) : clip.type === 'audio' ? (
+            <FileAudio2 className="h-6 w-6 text-banana-400" />
+          ) : clip.type === 'image' ? (
+            <Image className="h-6 w-6 text-banana-400" />
+          ) : (
+            <Video className="h-6 w-6 text-banana-400" />
+          )}
+          {clip.type !== 'image' && clip.duration > 0 && (
+            <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-medium text-white tabular-nums backdrop-blur-sm">
+              {fmtDuration(clip.duration)}
+            </span>
+          )}
+        </div>
+        <div className="px-2 py-1.5">
+          <span className="block truncate text-[10px] font-medium text-slate-200">{clip.name}</span>
+        </div>
+      </button>
+
+      {/* 3-dot menu trigger */}
+      <div className="absolute top-1.5 right-1.5 z-10" ref={menuRef}>
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowMenu((v) => !v); }}
+          className="flex h-6 w-6 items-center justify-center rounded-md bg-black/50 backdrop-blur-sm text-white/70 opacity-0 group-hover:opacity-100 hover:bg-black/70 transition-all"
+        >
+          <MoreVertical className="h-3.5 w-3.5" />
+        </button>
+
+        {showMenu && (
+          <div className="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-xl border border-panel-700 bg-panel-800/95 backdrop-blur-md p-1 shadow-2xl animate-fade-in">
+            <CtxMenuItem icon={<Download className="h-3.5 w-3.5" />} label="Download" onClick={handleDownload} />
+            <CtxMenuItem icon={<RefreshCw className="h-3.5 w-3.5" />} label="Retry Transcription" onClick={handleRetryTranscript} />
+            <CtxMenuItem icon={<Trash2 className="h-3.5 w-3.5" />} label="Delete" onClick={handleDelete} danger />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CtxMenuItem({ icon, label, onClick, danger }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+        danger
+          ? 'text-red-400 hover:bg-red-500/10'
+          : 'text-slate-300 hover:bg-panel-750 hover:text-slate-100'
+      }`}
+    >
+      {icon} {label}
+    </button>
+  );
+}
+
+/* ─── Library ─── */
 function Library() {
   const items = [
     { name: 'fallback-whoosh.mp3', Icon: Music },
@@ -128,6 +247,7 @@ function Library() {
   );
 }
 
+/* ─── Transcript ─── */
 function Transcript({ transcript, hasClips }) {
   if (!hasClips) return <Empty label="No media yet" hint="Upload a clip to transcribe its narration." />;
   if (!transcript) return (
@@ -145,7 +265,7 @@ function Transcript({ transcript, hasClips }) {
     return (
       <Empty
         label="No speech detected"
-        hint="The audio may be music-only/silent, or transcription failed. Check the activity log on the left."
+        hint="The audio may be music-only/silent, or transcription failed."
       />
     );
   }
@@ -171,6 +291,7 @@ function Transcript({ transcript, hasClips }) {
   );
 }
 
+/* ─── Empty State ─── */
 function Empty({ label, hint, onUpload, keysReady }) {
   return (
     <div className="flex h-full flex-col items-center justify-center text-center animate-fade-in">
@@ -180,17 +301,13 @@ function Empty({ label, hint, onUpload, keysReady }) {
       {onUpload && (
         <label className={`mt-4 rounded-lg border border-panel-600/60 px-4 py-2 text-xs font-medium transition-all ${keysReady ? 'cursor-pointer text-slate-300 hover:border-banana-500/60 hover:text-banana-400 hover:shadow-glow-banana-sm' : 'cursor-not-allowed text-slate-600'}`}>
           Import media
-          <input type="file" accept="video/*,audio/*" multiple disabled={!keysReady} className="hidden"
+          <input type="file" accept="video/*,audio/*,image/*" multiple disabled={!keysReady} className="hidden"
             onChange={(e) => e.target.files?.length && onUpload(e.target.files)} />
         </label>
       )}
     </div>
   );
 }
-
-const ToolIcon = ({ children }) => (
-  <button className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-panel-700 hover:text-slate-100">{children}</button>
-);
 
 /** Format seconds to m:ss or h:mm:ss */
 function fmtDuration(sec) {

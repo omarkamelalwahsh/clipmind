@@ -22,6 +22,7 @@ export default function Timeline({
   clips = [],
   activeClip,
   videoRef,
+  viewerRef,
   onDeleteClip,
   timeline = [],
   setTimeline,
@@ -29,6 +30,8 @@ export default function Timeline({
   setAudio,
   onRenderCustomTimeline,
   src,
+  remotionData,
+  setRemotionData,
 }) {
   const [zoom, setZoom] = useState(50);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -42,6 +45,11 @@ export default function Timeline({
 
   const [selectedSegmentId, setSelectedSegmentId] = useState(null);
   const [hasPendingEdits, setHasPendingEdits] = useState(false);
+  const SNAP_INTERVAL = 0.25; // seconds
+  const snapTime = useCallback((time) => {
+    if (!snap) return time;
+    return Math.round(time / SNAP_INTERVAL) * SNAP_INTERVAL;
+  }, [snap]);
 
   const handleTimelineVolumeChange = useCallback((id, newVolume) => {
     const updated = timeline.map(s => s.id === id ? { ...s, volume: newVolume } : s);
@@ -50,20 +58,22 @@ export default function Timeline({
   }, [timeline, setTimeline]);
 
   const handleSegmentTrim = useCallback((id, newSourceStart, newDuration) => {
+    const snappedSourceStart = snap ? Math.round(Math.max(0, newSourceStart) / SNAP_INTERVAL) * SNAP_INTERVAL : Math.max(0, newSourceStart);
+    const snappedDuration = snap ? Math.max(0.1, Math.round(newDuration / SNAP_INTERVAL) * SNAP_INTERVAL) : Math.max(0.1, newDuration);
     const updated = timeline.map(s => {
       if (s.id === id) {
         return {
           ...s,
-          sourceStart: Math.max(0, newSourceStart),
-          duration: Math.max(0.1, newDuration),
-          end: s.start + newDuration,
+          sourceStart: snappedSourceStart,
+          duration: snappedDuration,
+          end: s.start + snappedDuration,
         };
       }
       return s;
     });
     setTimeline(layoutSegments(updated));
     setHasPendingEdits(true);
-  }, [timeline, setTimeline]);
+  }, [timeline, setTimeline, snap]);
 
   const handleAudioVolumeChange = useCallback((id, newVolume) => {
     if (!setAudio) return;
@@ -72,10 +82,12 @@ export default function Timeline({
     setHasPendingEdits(true);
   }, [audio, setAudio]);
 
-  // Calculate total duration from either timeline or raw clips
-  const total = timeline.length > 0
-    ? (timeline.reduce((m, s) => Math.max(m, s.end), 0) || 1)
-    : (clips.reduce((m, c) => Math.max(m, c.duration || 0), 0) || 1);
+  // Calculate total duration from either remotionData, timeline, or raw clips
+  const total = remotionData
+    ? (remotionData.projectSettings?.totalDurationInFrames / 30 || 1)
+    : timeline.length > 0
+      ? (timeline.reduce((m, s) => Math.max(m, s.end), 0) || 1)
+      : (clips.reduce((m, c) => Math.max(m, c.duration || 0), 0) || 1);
 
   // Generate dynamic ruler marks based on total duration
   const rulerMarks = generateRulerMarks(total);
@@ -124,12 +136,30 @@ export default function Timeline({
     if (video) video.style.visibility = v1Visible ? 'visible' : 'hidden';
   }, [v1Visible, videoRef]);
 
+  const requestFullscreen = (element) => {
+    if (!element) return;
+    const fn = element.requestFullscreen || element.webkitRequestFullscreen || element.mozRequestFullScreen || element.msRequestFullscreen;
+    fn?.();
+  };
+
+  const exitFullscreen = () => {
+    const fn = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+    fn?.();
+  };
+
+  const isFullscreenActive = () => !!(
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    document.mozFullScreenElement ||
+    document.msFullscreenElement
+  );
+
   const toggleFullscreen = useCallback(() => {
-    const video = videoRef?.current;
-    if (!video) return;
-    if (document.fullscreenElement) document.exitFullscreen();
-    else video.requestFullscreen?.();
-  }, [videoRef]);
+    const target = viewerRef?.current || videoRef?.current;
+    if (!target) return;
+    if (isFullscreenActive()) exitFullscreen();
+    else requestFullscreen(target);
+  }, [videoRef, viewerRef]);
 
   const togglePlay = useCallback(() => {
     const video = videoRef?.current;
@@ -172,9 +202,10 @@ export default function Timeline({
     const x = e.clientX - rect.left - headerWidth;
     const pct = Math.max(0, Math.min(1, x / trackWidth));
     const seekTime = pct * total;
-    video.currentTime = seekTime;
-    setCurrentTime(seekTime);
-  }, [videoRef, total]);
+    const snappedSeekTime = snapTime(seekTime);
+    video.currentTime = snappedSeekTime;
+    setCurrentTime(snappedSeekTime);
+  }, [videoRef, total, snapTime]);
 
   const handleRulerMouseDown = (e) => {
     setIsScrubbing(true);
@@ -211,7 +242,7 @@ export default function Timeline({
       return;
     }
 
-    const splitPoint = currentTime - target.start;
+    const splitPoint = snapTime(currentTime - target.start);
     // Don't split if it's too close to the edges (within 0.05s) to avoid zero-duration segments
     if (splitPoint < 0.05 || splitPoint > target.duration - 0.05) {
       alert("لا يمكن القص عند حافة المقطع تماماً. حرك مؤشر التشغيل قليلاً داخل المقطع.");
@@ -241,10 +272,24 @@ export default function Timeline({
     setTimeline(laidOut);
     setHasPendingEdits(true);
     setSelectedSegmentId(part2.id); // select the second part
-  }, [timeline, currentTime, setTimeline]);
+  }, [timeline, currentTime, setTimeline, snapTime]);
 
   // Delete the selected segment
   const handleDelete = useCallback(() => {
+    // If a motion graphic is selected in a Remotion project, delete it
+    if (remotionData && selectedSegmentId) {
+      const isMgItem = remotionData.timeline?.motionGraphicsTrack?.some((t) => t.id === selectedSegmentId);
+      if (isMgItem) {
+        const track = remotionData.timeline.motionGraphicsTrack.filter((t) => t.id !== selectedSegmentId);
+        setRemotionData({
+          ...remotionData,
+          timeline: { ...remotionData.timeline, motionGraphicsTrack: track }
+        });
+        setSelectedSegmentId(null);
+        return;
+      }
+    }
+
     if (!timeline || !timeline.length) return;
 
     let target = null;
@@ -261,7 +306,7 @@ export default function Timeline({
     setTimeline(laidOut);
     setHasPendingEdits(true);
     setSelectedSegmentId(null);
-  }, [timeline, selectedSegmentId, currentTime, setTimeline]);
+  }, [timeline, selectedSegmentId, currentTime, setTimeline, remotionData, setRemotionData]);
 
   // Apply edits (trigger FFmpeg render)
   const handleApplyEdits = useCallback(() => {
@@ -273,7 +318,7 @@ export default function Timeline({
   // Playhead position as percentage
   const playheadPct = total > 0 ? (currentTime / total) * 100 : 0;
 
-  const hasVideo = Boolean(activeClip || result?.previewUrl || clips.length > 0);
+  const hasVideo = Boolean(activeClip || result?.previewUrl || clips.length > 0 || remotionData);
 
   return (
     <div className="flex h-[260px] shrink-0 flex-col border-t border-panel-700 bg-panel-850">
@@ -409,7 +454,7 @@ export default function Timeline({
               : undefined
           }
         >
-          <div className="flex flex-1 items-center gap-1 p-1.5" style={{ width: `${zoomScale * 100}%`, minWidth: '100%' }}>
+          <div className="relative h-[40px] my-1.5" style={{ width: `${zoomScale * 100}%`, minWidth: '100%' }}>
             {timeline.length > 0 ? (
               timeline.map((s) => {
                 const isSelected = selectedSegmentId === s.id;
@@ -417,6 +462,7 @@ export default function Timeline({
                   <Block
                     key={s.id}
                     widthPct={(s.duration / total) * 100}
+                    offsetPct={((s.start || 0) / total) * 100}
                     title={`${s.sourceName} • ${s.duration.toFixed(2)}s`}
                     onClick={() => setSelectedSegmentId(s.id)}
                     className={`cursor-pointer border transition-all ${
@@ -440,6 +486,62 @@ export default function Timeline({
           </div>
         </Track>
 
+        {/* T1 — Text / Motion Graphics Track */}
+        {remotionData?.timeline?.motionGraphicsTrack?.length > 0 && (
+          <Track
+            label="T1"
+            badgeColor="bg-cyan-500/10 text-cyan-400 font-bold border border-cyan-500/20"
+            isVisible={true}
+            onToggleVisibility={() => {}}
+            isMuted={false}
+            onToggleMute={() => {}}
+          >
+            <div className="relative h-[40px] my-1.5" style={{ width: `${zoomScale * 100}%`, minWidth: '100%' }}>
+              {remotionData.timeline.motionGraphicsTrack.map((mg) => {
+                const startSec = mg.startFrame / 30;
+                const endSec = mg.endFrame / 30;
+                const durSec = endSec - startSec;
+                const isSelected = selectedSegmentId === mg.id;
+
+                return (
+                  <Block
+                    key={mg.id}
+                    widthPct={(durSec / total) * 100}
+                    offsetPct={(startSec / total) * 100}
+                    title={`${mg.type}: ${mg.properties?.text || mg.id}`}
+                    onClick={() => setSelectedSegmentId(mg.id)}
+                    className={`cursor-pointer border transition-all ${
+                      isSelected
+                        ? 'border-banana-400 bg-panel-750 shadow-glow-banana-sm ring-1 ring-banana-400/30'
+                        : 'border-panel-700 bg-panel-800 hover:border-panel-600 text-slate-300'
+                    }`}
+                    duration={durSec}
+                    sourceStart={startSec}
+                    onTrim={(newStart, newDur) => {
+                      const newStartFrame = Math.max(0, Math.round(newStart * 30));
+                      const newEndFrame = Math.max(newStartFrame + 1, Math.round((newStart + newDur) * 30));
+                      const track = remotionData.timeline.motionGraphicsTrack.map((item) =>
+                        item.id === mg.id
+                          ? { ...item, startFrame: newStartFrame, endFrame: newEndFrame }
+                          : item
+                      );
+                      setRemotionData({
+                        ...remotionData,
+                        timeline: { ...remotionData.timeline, motionGraphicsTrack: track }
+                      });
+                    }}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span className="rounded bg-cyan-500/10 px-1 py-0.5 text-[9px] font-bold text-cyan-400 uppercase">{mg.type === 'lower_third' ? 'L3' : mg.type === 'title_card' ? 'Title' : 'Text'}</span>
+                      <span className="truncate max-w-[150px]">{mg.properties?.text || mg.id}</span>
+                    </span>
+                  </Block>
+                );
+              })}
+            </div>
+          </Track>
+        )}
+
         {/* A1 — Audio Track */}
         <Track
           label="A1"
@@ -449,7 +551,7 @@ export default function Timeline({
           isMuted={a1Muted}
           onToggleMute={() => setA1Muted((m) => !m)}
         >
-          <div className="flex flex-1 items-center gap-1 p-1.5" style={{ width: `${zoomScale * 100}%`, minWidth: '100%' }}>
+          <div className="relative h-[40px] my-1.5" style={{ width: `${zoomScale * 100}%`, minWidth: '100%' }}>
             {audio.length > 0 ? (
               audio.map((a) => (
                 <Block
@@ -691,8 +793,12 @@ function Block({
       ref={blockRef}
       title={title}
       onClick={onClick}
-      style={{ width: `${Math.max(5, widthPct)}%`, marginLeft: offsetPct ? `${offsetPct}%` : undefined }}
-      className={`relative flex h-10 items-center overflow-hidden rounded-md text-[11px] font-medium whitespace-nowrap transition-all hover:brightness-110 cursor-default group ${className}`}
+      style={{
+        width: `${widthPct}%`,
+        minWidth: '20px',
+        ...(offsetPct !== undefined ? { position: 'absolute', left: `${offsetPct}%`, top: 0, bottom: 0 } : {})
+      }}
+      className={`flex h-10 items-center overflow-hidden rounded-md text-[11px] font-medium whitespace-nowrap transition-all hover:brightness-110 cursor-default group ${className} ${offsetPct === undefined ? 'relative' : ''}`}
     >
       {/* Left Trim Handle */}
       {onTrim && (

@@ -243,6 +243,8 @@ export function useOrchestrator() {
       try {
         const data = await orchestrator.planRemotion(prompt);
         setRemotionData(data);
+        // Surface the transcript so the composition can sync kinetic captions.
+        if (orchestratorRef.current?.transcript) setTranscript(orchestratorRef.current.transcript);
       } catch (err) {
         setError(err.message);
       } finally {
