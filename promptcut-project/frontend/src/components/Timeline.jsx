@@ -486,6 +486,42 @@ export default function Timeline({
           </div>
         </Track>
 
+        {/* S1 — Remotion Scenes Track (creative motion-graphics scenes) */}
+        {remotionData?.timeline?.scenes?.length > 0 && (
+          <Track
+            label="S1"
+            badgeColor="bg-fuchsia-500/10 text-fuchsia-400 font-bold border border-fuchsia-500/20"
+            isVisible={true}
+            onToggleVisibility={() => {}}
+            isMuted={false}
+            onToggleMute={() => {}}
+          >
+            <div className="relative h-[40px] my-1.5" style={{ width: `${zoomScale * 100}%`, minWidth: '100%' }}>
+              {remotionData.timeline.scenes.map((scene, idx) => {
+                const startSec = scene.startFrame / 30;
+                const durSec = (scene.endFrame - scene.startFrame) / 30;
+                const kinds = (scene.motionGraphics || []).map((m) => m.type).join(' · ');
+                return (
+                  <Block
+                    key={scene.sceneId || idx}
+                    widthPct={(durSec / total) * 100}
+                    offsetPct={(startSec / total) * 100}
+                    title={`${scene.sceneId}: ${scene.narrationScript || ''} [${kinds}]`}
+                    duration={durSec}
+                    sourceStart={startSec}
+                    className="border border-fuchsia-500/30 bg-gradient-to-r from-fuchsia-500/20 to-cyan-500/10 text-slate-100"
+                  >
+                    <span className="flex items-center gap-1.5 truncate">
+                      <span className="rounded bg-fuchsia-500/20 px-1 py-0.5 text-[9px] font-bold text-fuchsia-300 uppercase">Scene {idx + 1}</span>
+                      <span className="truncate">{scene.narrationScript || kinds || scene.sceneId}</span>
+                    </span>
+                  </Block>
+                );
+              })}
+            </div>
+          </Track>
+        )}
+
         {/* T1 — Text / Motion Graphics Track */}
         {remotionData?.timeline?.motionGraphicsTrack?.length > 0 && (
           <Track

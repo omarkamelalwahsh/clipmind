@@ -34,6 +34,9 @@ export default function AssetsPanel({
   onDeleteClip,
   remotionData,
   setRemotionData,
+  scenes = [],
+  focusedSceneId = null,
+  onSelectScene,
 }) {
   useEffect(() => {
     if (tab === 'TRANSCRIPT') onNeedTranscript?.();
@@ -83,15 +86,22 @@ export default function AssetsPanel({
       {/* Content */}
       <div className="min-h-0 flex-1 overflow-y-auto p-3 animate-fade-in" key={tab}>
         {tab === 'MEDIA' && (
-          <MediaGrid
-            clips={clips}
-            onUpload={onUpload}
-            keysReady={keysReady}
-            activeClip={activeClip}
-            onSelectClip={onSelectClip}
-            onDeleteClip={onDeleteClip}
-            onNeedTranscript={onNeedTranscript}
-          />
+          <div className="space-y-3">
+            {scenes.length > 0 && (
+              <SceneGrid scenes={scenes} focusedSceneId={focusedSceneId} onSelectScene={onSelectScene} />
+            )}
+            {(clips.length > 0 || scenes.length === 0) && (
+              <MediaGrid
+                clips={clips}
+                onUpload={onUpload}
+                keysReady={keysReady}
+                activeClip={activeClip}
+                onSelectClip={onSelectClip}
+                onDeleteClip={onDeleteClip}
+                onNeedTranscript={onNeedTranscript}
+              />
+            )}
+          </div>
         )}
         {tab === 'LIBRARY' && <Library />}
         {tab === 'TRANSCRIPT' && <Transcript transcript={transcript} hasClips={clips.length > 0} />}
@@ -106,6 +116,57 @@ export default function AssetsPanel({
         )}
       </div>
     </section>
+  );
+}
+
+/* ─── Generated Scenes (click to preview one alone) ─── */
+function SceneGrid({ scenes, focusedSceneId, onSelectScene }) {
+  const kindColor = { pulse_wave: 'text-cyan-400', hud_ring: 'text-sky-400', kinetic_text: 'text-fuchsia-400' };
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between px-0.5">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-300">Generated Scenes</span>
+        {focusedSceneId && (
+          <button onClick={() => onSelectScene?.(null)} className="text-[10px] font-semibold text-slate-400 hover:text-banana-400">
+            Show all
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {scenes.map((s, i) => {
+          const id = s.sceneId || s.id;
+          const active = focusedSceneId === id;
+          const kinds = [...new Set((s.motionGraphics || []).map((m) => m.type))];
+          const dur = ((s.endFrame - s.startFrame) / 30).toFixed(1);
+          const colors = s.backgroundAsset?.colors || ['#0B132B', '#1C2541'];
+          return (
+            <button
+              key={id}
+              onClick={() => onSelectScene?.(active ? null : id)}
+              className={`group overflow-hidden rounded-lg border text-left transition-all ${
+                active ? 'border-fuchsia-400 ring-1 ring-fuchsia-400/40 shadow-glow-banana-sm' : 'border-panel-700 bg-panel-800 hover:border-panel-600'
+              }`}
+            >
+              <div
+                className="relative flex h-16 items-center justify-center"
+                style={{ background: `radial-gradient(circle at 30% 30%, ${colors[0]}66, transparent 60%), radial-gradient(circle at 75% 60%, ${colors[1]}66, transparent 60%), #05070d` }}
+              >
+                <span className="text-[10px] font-bold text-white/90">SCENE {i + 1}</span>
+                <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 py-0.5 text-[9px] font-medium text-white tabular-nums">{dur}s</span>
+              </div>
+              <div className="px-2 py-1.5">
+                <p className="truncate text-[11px] font-medium text-slate-200">{s.narrationScript || id}</p>
+                <div className="mt-0.5 flex flex-wrap gap-1">
+                  {kinds.map((k) => (
+                    <span key={k} className={`text-[8px] font-bold uppercase ${kindColor[k] || 'text-slate-500'}`}>{k.replace('_', ' ')}</span>
+                  ))}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

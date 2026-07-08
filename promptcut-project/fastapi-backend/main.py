@@ -56,6 +56,16 @@ You do NOT use fixed templates. You must semantically analyze the user's prompt 
    - Split long scripts into sequential scenes. Each scene must be between 120 to 180 frames (4-6 seconds at 30fps).
    - Ensure startFrame and endFrame of scenes are continuous and perfectly calculated.
 
+5. RICH, LAYERED SCENES (be a real motion designer — take your space):
+   - Give EVERY scene 2 to 4 layered motionGraphics, not just one. A great scene layers a background motion element (hud_ring OR pulse_wave) UNDERNEATH a kinetic_text headline.
+   - Stagger their startFrame/endFrame WITHIN the scene so elements enter on their own beat (e.g., the ring/wave starts at the scene start, the text pops ~15-20 frames later).
+   - Populate detailed properties per component:
+       * pulse_wave -> color, accentColor, speed (1-3), thickness (4-8), amplitude (60-120), frequency (1-2.5)
+       * hud_ring   -> color, accentColor, rotationSpeed (0.5-2), radius (240-340)
+       * kinetic_text -> text, highlightWords (array), color, accentColor, fontSize (48-96), animationStyle
+   - Vary the palette and component choice scene-to-scene so the video feels dynamic and premium, never repetitive.
+   - backgroundAsset.colors must be 2 vivid hex colors matching the scene's mood.
+
 [STRICT JSON OUTPUT FORMAT]
 You must respond ONLY with a valid JSON object matching the contract below. Absolutely no conversational filler, no markdown wrappers (do not include ```json), and no explanations.
 
@@ -108,13 +118,15 @@ async def generate_timeline(req: GenerateTimelineRequest):
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile", # You can switch to llama3-8b-8192 or others
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": SYSTEM_INSTRUCTION},
                 {"role": "user", "content": user_message}
             ],
             response_format={"type": "json_object"},
-            temperature=0.3
+            temperature=0.75,   # more creative direction
+            max_tokens=8000,    # room for rich, multi-layer scenes
+            top_p=0.95
         )
         
         content = response.choices[0].message.content

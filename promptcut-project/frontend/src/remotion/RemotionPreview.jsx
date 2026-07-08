@@ -34,10 +34,15 @@ export default function RemotionPreview({
   const width = ps.width || 1920;
   const height = ps.height || 1080;
 
-  // Composition length: longest of the agent timeline and the base video.
+  // Composition length. In creative "scenes" mode use the timeline exactly (so a
+  // long uploaded clip doesn't pad the promo with black). In overlay mode take
+  // the longer of the timeline and the base video.
+  const sceneMode = (data?.timeline?.scenes?.length || 0) > 0;
   const timelineFrames = ps.totalDurationInFrames || 0;
   const videoFrames = Math.round((videoDurationSec || 0) * fps);
-  const durationInFrames = Math.max(1, timelineFrames, videoFrames);
+  const durationInFrames = sceneMode
+    ? Math.max(1, timelineFrames)
+    : Math.max(1, timelineFrames, videoFrames);
 
   // Use a callback ref so that the mock video is bound immediately when
   // the @remotion/player mounts in the DOM.
@@ -139,6 +144,8 @@ export default function RemotionPreview({
       compositionWidth={width}
       compositionHeight={height}
       fps={fps}
+      controls
+      autoPlay
       loop
       style={{ width: '100%', height: '100%', borderRadius: 12, overflow: 'hidden' }}
     />

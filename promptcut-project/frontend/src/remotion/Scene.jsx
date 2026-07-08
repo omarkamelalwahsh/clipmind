@@ -7,7 +7,7 @@
  *    `properties` object (text, fontFamily, color, fontSize, animationEffect)
  *    so the frontend Property Panel can restyle it without code changes.
  */
-import { AbsoluteFill, Img, Video, useCurrentFrame, useVideoConfig, spring, interpolate } from 'remotion';
+import { AbsoluteFill, Img, Video, Sequence, useCurrentFrame, useVideoConfig, spring, interpolate } from 'remotion';
 import { PulseWave } from './PulseWave.jsx';
 import { HudRing } from './HudRing.jsx';
 import { KineticText } from './KineticText.jsx';
@@ -256,19 +256,40 @@ export function SceneSequence({ scene, durationInFrames }) {
       }
       : { backgroundColor: background.color || '#000' };
 
+  const accent = gradientColors[1] || gradientColors[0] || '#00E5FF';
+
   return (
     <AbsoluteFill style={{ ...style, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-      {scene.motionGraphics?.map((mg) => {
+      {/* Depth: subtle grid on every scene + a soft accent glow + vignette. */}
+      <AbsoluteFill style={{
+        backgroundImage: 'linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)',
+        backgroundSize: '64px 64px',
+        maskImage: 'radial-gradient(circle at 50% 50%, #000 40%, transparent 85%)',
+        WebkitMaskImage: 'radial-gradient(circle at 50% 50%, #000 40%, transparent 85%)',
+      }} />
+      <AbsoluteFill style={{ background: `radial-gradient(circle at 50% 45%, ${accent}22 0%, transparent 55%)` }} />
+      <AbsoluteFill style={{ boxShadow: 'inset 0 0 220px rgba(0,0,0,0.8)' }} />
+
+      {(scene.motionGraphics || []).map((mg, i) => {
+        // The agent gives ABSOLUTE frames; convert to this scene's local frames
+        // so each element enters/exits at its own beat (wave first, text after…).
+        const rawStart = Math.max(0, Math.round((mg.startFrame ?? scene.startFrame) - scene.startFrame));
+        const rawEnd = Math.round((mg.endFrame ?? scene.endFrame) - scene.startFrame);
+        const from = Math.min(rawStart, durationInFrames - 1);
+        const dur = Math.max(1, Math.min(rawEnd, durationInFrames) - from);
+
+        let el;
         switch (mg.type) {
-          case 'pulse_wave':
-            return <PulseWave key={mg.id} properties={mg.properties} />;
-          case 'hud_ring':
-            return <HudRing key={mg.id} properties={mg.properties} />;
-          case 'kinetic_text':
-            return <KineticText key={mg.id} properties={mg.properties} />;
-          default:
-            return <MotionGraphic key={mg.id} item={mg} durationInFrames={durationInFrames} />;
+          case 'pulse_wave': el = <PulseWave properties={mg.properties} />; break;
+          case 'hud_ring': el = <HudRing properties={mg.properties} />; break;
+          case 'kinetic_text': el = <KineticText properties={mg.properties} />; break;
+          default: el = <MotionGraphic item={mg} durationInFrames={dur} />;
         }
+        return (
+          <Sequence key={mg.id || i} from={from} durationInFrames={dur} name={mg.id || `mg_${i}`}>
+            {el}
+          </Sequence>
+        );
       })}
     </AbsoluteFill>
   );

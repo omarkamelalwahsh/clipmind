@@ -30,16 +30,21 @@ export default function App() {
     remotionData, setRemotionData, generateMotionGraphics,
   } = useOrchestrator();
 
-  // Route motion-graphics / kinetic-typography requests to the Remotion engine;
-  // everything else goes to the FFmpeg edit pipeline.
+  // Routing:
+  //  • Explicit motion keywords → Remotion motion-graphics engine.
+  //  • A generative "make me a video / promo / scenes" request with NO uploaded
+  //    footage → Remotion (there's nothing to FFmpeg-edit).
+  //  • Otherwise (editing uploaded footage) → the FFmpeg pipeline.
   const smartSubmit = useCallback(
     (prompt, opts) => {
       const p = (prompt || '').toLowerCase();
-      const isMotion = /motion graphic|kinetic|typography|animated text|lower.?third|remotion|title card|intro animation/.test(p);
-      if (isMotion) generateMotionGraphics(prompt);
+      const hasVideo = clips.some((c) => c.type === 'video');
+      const motionWords = /motion graphic|kinetic|typography|animated text|lower.?third|remotion|title card|intro animation|pulse wave|hud ring|scene\b/.test(p);
+      const generativeVideo = /(make|create|generate|build|produce|design)\b.*(video|promo|ad|advert|reel|short|intro|explainer|montage|animation|scene|teaser|trailer)/.test(p);
+      if (motionWords || (!hasVideo && generativeVideo)) generateMotionGraphics(prompt);
       else render(prompt, opts);
     },
-    [generateMotionGraphics, render],
+    [generateMotionGraphics, render, clips],
   );
 
   const [tab, setTab] = useState('MEDIA');
@@ -102,6 +107,33 @@ export default function App() {
     return map;
   }, [clips]);
 
+  // Scene isolation: clicking a scene in MEDIA previews just that scene alone.
+  const [focusedSceneId, setFocusedSceneId] = useState(null);
+  const scenes = remotionData?.timeline?.scenes || [];
+  useEffect(() => { setFocusedSceneId(null); }, [remotionData]);
+
+  const previewRemotionData = useMemo(() => {
+    if (!remotionData || !focusedSceneId) return remotionData;
+    const scene = scenes.find((s) => (s.sceneId || s.id) === focusedSceneId);
+    if (!scene) return remotionData;
+    const off = scene.startFrame;
+    const rebased = {
+      ...scene,
+      startFrame: 0,
+      endFrame: scene.endFrame - off,
+      motionGraphics: (scene.motionGraphics || []).map((m) => ({
+        ...m,
+        startFrame: Math.max(0, (m.startFrame ?? off) - off),
+        endFrame: (m.endFrame ?? scene.endFrame) - off,
+      })),
+    };
+    return {
+      ...remotionData,
+      projectSettings: { ...remotionData.projectSettings, totalDurationInFrames: rebased.endFrame },
+      timeline: { ...remotionData.timeline, scenes: [rebased] },
+    };
+  }, [remotionData, focusedSceneId, scenes]);
+
   return (
     <div className="flex h-full w-full flex-col bg-panel-900 text-slate-100">
       {/* ─── Menu Bar ─── */}
@@ -161,6 +193,9 @@ export default function App() {
               onDeleteClip={removeClip}
               remotionData={remotionData}
               setRemotionData={setRemotionData}
+              scenes={scenes}
+              focusedSceneId={focusedSceneId}
+              onSelectScene={setFocusedSceneId}
             />
 
             {/* Player */}
@@ -173,10 +208,12 @@ export default function App() {
               keysReady={keysReady}
               videoRef={videoRef}
               viewerRef={viewerRef}
-              remotionData={remotionData}
+              remotionData={previewRemotionData}
               setRemotionData={setRemotionData}
               transcript={transcript}
               remotionAssets={remotionAssets}
+              focusedSceneLabel={focusedSceneId ? `Scene ${scenes.findIndex((s) => (s.sceneId || s.id) === focusedSceneId) + 1}` : null}
+              onClearFocusedScene={() => setFocusedSceneId(null)}
               showTimeline={showTimeline}
               onToggleTimeline={() => setShowTimeline((v) => !v)}
             />
