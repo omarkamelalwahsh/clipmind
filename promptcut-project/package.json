@@ -10,5 +10,16 @@
   "scripts": {
     "dev": "npm run dev --workspace=promptcut-frontend",
     "build": "npm run build --workspace=promptcut-frontend"
+  },
+  "devDependencies": {
+    "hyperframes": "^0.7.42"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true,
+    "esbuild@0.25.12": true,
+    "onnxruntime-node@1.27.0": true,
+    "sharp@0.34.5": true,
+    "protobufjs@7.6.5": true,
+    "@google/genai@1.52.0": true
   }
 }
